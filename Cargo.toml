@@ -1,0 +1,13 @@
+[package]
+name = "entity_data"
+version = "0.1.0"
+authors = ["a7292969 <a7292969@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+ahash = { version = "0.7.2" }
+bit-set = "0.5.2"
+unchecked_unwrap = "3.0.0"
+
+[dev-dependencies]
+rand = "0.8.3"
