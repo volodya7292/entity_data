@@ -1,5 +1,14 @@
 # entity_data
 
+[![Build Status][build_img]][build_lnk] [![Crates.io][crates_img]][crates_lnk] [![Docs.rs][doc_img]][doc_lnk]
+
+[build_img]: https://github.com/a7292969/entity_data/actions/workflows/build.yml/badge.svg
+[build_lnk]: https://github.com/a7292969/entity_data/actions
+[crates_img]: https://img.shields.io/crates/v/entity_data.svg
+[crates_lnk]: https://crates.io/crates/entity_data
+[doc_img]: https://docs.rs/entity_data/badge.svg
+[doc_lnk]: https://docs.rs/entity_data
+
 A container for entity component data.
 
 An entity is an opaque identifier for an object.
