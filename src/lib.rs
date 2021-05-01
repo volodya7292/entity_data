@@ -1,8 +1,14 @@
 //! A container for entity component data.
 //!
-//! An entity is an opaque identifier for an object. Each entity can have multiple components associated with it.
-//! This approach is far more superior to dynamic dispatch because
-//! components can have their separate fields and components of the same type are stored in a contiguous vector.
+//! An entity is an opaque identifier for an object.
+//! Each entity can have multiple components associated with it.
+//! Storage is based on [ECS](https://en.wikipedia.org/wiki/Entity_component_system) technique,
+//! but the main purpose is to efficiently store and access
+//! individual components without `Box`ing them.
+//!
+//! The approach used in this library is superior to Rust's dynamic dispatch because
+//! components can have their separate fields and components of the
+//! same type are stored in a contiguous vector.
 //!
 //! # Examples
 //!
