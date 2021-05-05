@@ -90,7 +90,7 @@ impl Archetype {
             }
         }
 
-        return is_present;
+        is_present
     }
 
     /// Returns the number of entities in the archetype.

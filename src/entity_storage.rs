@@ -4,20 +4,24 @@ use std::any::{Any, TypeId};
 use std::collections::hash_map;
 use std::{mem, ptr, slice};
 
-/// An opaque entity identifier.
+/// An entity identifier.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct Entity {
-    archetype_id: u32,
-    id: u32,
+pub struct EntityId {
+    pub archetype_id: u32,
+    pub id: u32,
 }
 
-impl Entity {
-    pub fn archetype_id(&self) -> u32 {
-        self.archetype_id
-    }
+impl EntityId {
+    pub const NULL: Self = EntityId { archetype_id: u32::MAX, id: u32::MAX };
 
-    pub fn id(&self) -> u32 {
-        self.id
+    pub fn new(archetype_id: u32, id: u32) -> EntityId {
+        EntityId { archetype_id, id }
+    }
+}
+
+impl Default for EntityId {
+    fn default() -> Self {
+        EntityId::NULL
     }
 }
 
@@ -35,10 +39,10 @@ impl EntityStorageLayout {
     }
 
     pub fn add_archetype(&mut self) -> ArchetypeBuilder {
-        return ArchetypeBuilder {
+        ArchetypeBuilder {
             layout: self,
             type_ids: HashSet::with_capacity(8),
-        };
+        }
     }
 }
 
@@ -74,10 +78,10 @@ impl EntityStorage {
 
     /// Returns `EntityBuilder` of the new entity.
     pub fn add_entity(&mut self, archetype_id: u32) -> EntityBuilder {
-        return EntityBuilder {
+        EntityBuilder {
             container: self,
             archetype_id,
-        };
+        }
     }
 
     /// Returns a reference to the specified archetype.
@@ -91,7 +95,7 @@ impl EntityStorage {
     }
 
     /// Returns a reference to the component `C` of the specified entity.
-    pub fn get<C: 'static>(&self, entity: &Entity) -> Option<&C> {
+    pub fn get<C: 'static>(&self, entity: &EntityId) -> Option<&C> {
         self.archetypes
             .get(entity.archetype_id as usize)
             .map(|arch| arch.get(entity.id))
@@ -99,7 +103,7 @@ impl EntityStorage {
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity.
-    pub fn get_mut<C: 'static>(&mut self, entity: &Entity) -> Option<&mut C> {
+    pub fn get_mut<C: 'static>(&mut self, entity: &EntityId) -> Option<&mut C> {
         self.archetypes
             .get_mut(entity.archetype_id as usize)
             .map(|arch| arch.get_mut(entity.id))
@@ -107,12 +111,12 @@ impl EntityStorage {
     }
 
     /// Removes an entity from the storage. Returns `true` if the entity was present in the storage.
-    pub fn remove(&mut self, entity: &Entity) -> bool {
-        return if let Some(arch) = self.archetypes.get_mut(entity.archetype_id as usize) {
+    pub fn remove(&mut self, entity: &EntityId) -> bool {
+        if let Some(arch) = self.archetypes.get_mut(entity.archetype_id as usize) {
             arch.remove(entity.id)
         } else {
             false
-        };
+        }
     }
 
     /// Returns the number of entities in the storage.
@@ -141,8 +145,7 @@ impl<'a> ArchetypeBuilder<'a> {
         }
 
         self.type_ids.insert(type_id);
-
-        return self;
+        self
     }
 
     /// Returns id of the archetype. Equivalent archetypes have identical ids.
@@ -180,7 +183,7 @@ impl EntityBuilder<'_> {
             mem::forget(component);
         }
 
-        return self;
+        self
     }
 
     /// Builds a new entity and returns its identifier.
@@ -189,7 +192,7 @@ impl EntityBuilder<'_> {
     ///
     /// - if specified archetype is not found;
     /// - if specified component types != archetype component types;
-    pub fn build(self) -> Entity {
+    pub fn build(self) -> EntityId {
         #[cold]
         #[inline(never)]
         fn assert_failed(id: u32) -> ! {
@@ -259,7 +262,7 @@ impl EntityBuilder<'_> {
 
         self.container.temp_data.clear();
 
-        Entity {
+        EntityId {
             archetype_id,
             id: entity_id,
         }

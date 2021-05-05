@@ -82,6 +82,8 @@ mod archetype;
 mod entity_storage;
 mod utils;
 
-pub use entity_storage::Entity;
+pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
 pub use entity_storage::EntityStorageLayout;
+pub use entity_storage::EntityBuilder;
+pub use entity_storage::ArchetypeBuilder;
