@@ -82,8 +82,54 @@ mod archetype;
 mod entity_storage;
 mod utils;
 
+pub use entity_storage::ArchetypeBuilder;
+pub use entity_storage::EntityBuilder;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
 pub use entity_storage::EntityStorageLayout;
-pub use entity_storage::EntityBuilder;
-pub use entity_storage::ArchetypeBuilder;
+
+/// A simple method of adding a archetype to `EntityStorageLayout`.
+///
+/// # Examples
+/// ```
+/// use entity_data::EntityStorageLayout;
+/// use entity_data::add_archetype;
+///
+/// struct Comp1 { }
+/// struct Comp2 { }
+///
+/// let mut layout = EntityStorageLayout::new();
+/// let id = add_archetype!(layout, Comp1, Comp2);
+/// ```
+#[macro_export]
+macro_rules! add_archetype {
+    ($storage_layout: expr, $($component_ty: ty),+) => {
+        $storage_layout.add_archetype()
+        $(.with::<$component_ty>())*
+        .build()
+    };
+}
+
+/// A simple method of adding an entity to `EntityStorage`.
+///
+/// # Examples
+/// ```
+/// use entity_data::{EntityStorageLayout, EntityStorage, add_archetype, add_entity};
+///
+/// struct Comp1 { }
+/// struct Comp2 { }
+///
+/// let mut layout = EntityStorageLayout::new();
+/// let arch_id = add_archetype!(layout, Comp1, Comp2);
+///
+/// let mut storage = EntityStorage::new(&layout);
+/// let entity_id = add_entity!(storage, arch_id, Comp1 {}, Comp2 {});
+/// ```
+#[macro_export]
+macro_rules! add_entity {
+    ($storage: expr, $archetype_id: expr, $($component: expr),+) => {
+        $storage.add_entity($archetype_id)
+        $(.with($component))*
+        .build()
+    };
+}

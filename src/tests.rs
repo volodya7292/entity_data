@@ -1,4 +1,4 @@
-use crate::{EntityStorage, EntityStorageLayout};
+use crate::{EntityStorage, EntityStorageLayout, add_archetype, add_entity};
 use rand::Rng;
 use std::convert::TryInto;
 
@@ -43,13 +43,9 @@ impl Comp2 {
 #[test]
 fn it_works() {
     let mut layout = EntityStorageLayout::new();
-    let a1 = layout
-        .add_archetype()
-        .with::<Comp1>()
-        .with::<Comp2>()
-        .build();
-    let a2 = layout.add_archetype().with::<Comp1>().build();
-    let a3 = layout.add_archetype().with::<Comp2>().build();
+    let a1 = add_archetype!(layout, Comp1, Comp2);
+    let a2 = add_archetype!(layout, Comp1);
+    let a3 = add_archetype!(layout, Comp2);
 
     let mut storage = EntityStorage::new(&layout);
 
@@ -58,20 +54,12 @@ fn it_works() {
     let e1v = Comp1::new();
     let e2v = Comp2::new();
 
-    let _e0 = storage
-        .add_entity(a1)
-        .with(e00v.clone())
-        .with(e01v.clone())
-        .build();
-    let e0 = storage
-        .add_entity(a1)
-        .with(e00v.clone())
-        .with(e01v.clone())
-        .build();
-    let _e1 = storage.add_entity(a2).with(e1v.clone()).build();
-    let e1 = storage.add_entity(a2).with(e1v.clone()).build();
-    let _e2 = storage.add_entity(a3).with(e2v.clone()).build();
-    let e2 = storage.add_entity(a3).with(e2v.clone()).build();
+    let _e0 = add_entity!(storage, a1, e00v.clone(), e01v.clone());
+    let e0 = add_entity!(storage, a1, e00v.clone(), e01v.clone());
+    let _e1 = add_entity!(storage, a2, e1v.clone());
+    let e1 = add_entity!(storage, a2, e1v.clone());
+    let _e2 = add_entity!(storage, a3, e2v.clone());
+    let e2 = add_entity!(storage, a3, e2v.clone());
 
     assert_eq!(storage.len(), 6);
 

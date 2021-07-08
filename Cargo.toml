@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["a7292969 <a7292969@gmail.com>"]
 edition = "2018"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
@@ -11,9 +11,8 @@ readme = "README.md"
 license-file = "LICENSE.md"
 
 [dependencies]
-ahash = "0.7.2"
+ahash = "0.7.4"
 bit-set = "0.5.2"
-unchecked_unwrap = "3.0.0"
 
 [dev-dependencies]
-rand = "0.8.3"
+rand = "0.8.4"
