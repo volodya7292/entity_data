@@ -1,8 +1,8 @@
 [package]
 name = "entity_data"
-version = "0.2.1"
+version = "1.0.0"
 authors = ["a7292969 <a7292969@gmail.com>"]
-edition = "2018"
+edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
 categories = ["data-structures", "rust-patterns"]
 description = "A container for entity component data."
@@ -11,8 +11,8 @@ readme = "README.md"
 license-file = "LICENSE.md"
 
 [dependencies]
-ahash = "0.7.4"
-bit-set = "0.5.2"
+ahash = "0.7"
+bit-set = "0.5"
 
 [dev-dependencies]
-rand = "0.8.4"
+rand = "0.8"
