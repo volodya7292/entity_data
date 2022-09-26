@@ -15,6 +15,7 @@
 //! ```
 //! use entity_data::EntityStorageLayout;
 //! use entity_data::EntityStorage;
+//! use entity_data::entity_state;
 //!
 //! struct Barks {
 //!     bark_sound: String,
@@ -26,6 +27,7 @@
 //!     }
 //! }
 //!
+//! #[derive(Clone)]
 //! struct Eats {
 //!     eaten_food: Vec<String>,
 //! }
@@ -52,16 +54,18 @@
 //!
 //!     let mut storage = EntityStorage::new(&layout);
 //!
-//!     let super_dog = storage.add_entity(type_dog)
-//!         .with(Dog { favorite_food: "meat".to_string(), })
-//!         .with(Eats { eaten_food: vec![] })
-//!         .with(Barks { bark_sound: "bark.ogg".to_string() })
-//!         .build();
+//!     let eats = Eats { eaten_food: vec![] };
 //!
-//!     let hummingbird = storage.add_entity(type_bird)
-//!         .with(Bird { weight: 0.07, habitat: "gardens".to_string() })
-//!         .with(Eats { eaten_food: vec![] })
-//!         .build();
+//!     let super_dog = storage.add_entity(type_dog, entity_state!(
+//!         Dog = Dog { favorite_food: "meat".to_string(), },
+//!         Eats = eats.clone(),
+//!         Barks = Barks { bark_sound: "bark.ogg".to_string() },
+//!     ));
+//!
+//!     let hummingbird = storage.add_entity(type_bird, entity_state!(
+//!         Bird = Bird { weight: 0.07, habitat: "gardens".to_string() },
+//!         Eats = eats
+//!     ));
 //!
 //!
 //!     let super_dog_barks = storage.get::<Barks>(&super_dog).unwrap();
@@ -83,10 +87,11 @@ mod entity_storage;
 mod utils;
 
 pub use entity_storage::ArchetypeBuilder;
-pub use entity_storage::EntityBuilder;
 pub use entity_storage::EntityId;
+pub use entity_storage::EntityState;
 pub use entity_storage::EntityStorage;
 pub use entity_storage::EntityStorageLayout;
+pub use entity_storage::ComponentInfo;
 
 /// A simple method of adding a archetype to `EntityStorageLayout`.
 ///
@@ -110,26 +115,43 @@ macro_rules! add_archetype {
     };
 }
 
-/// A simple method of adding an entity to `EntityStorage`.
-///
-/// # Examples
-/// ```
-/// use entity_data::{EntityStorageLayout, EntityStorage, add_archetype, add_entity};
-///
-/// struct Comp1 { }
-/// struct Comp2 { }
-///
-/// let mut layout = EntityStorageLayout::new();
-/// let arch_id = add_archetype!(layout, Comp1, Comp2);
-///
-/// let mut storage = EntityStorage::new(&layout);
-/// let entity_id = add_entity!(storage, arch_id, Comp1 {}, Comp2 {});
-/// ```
 #[macro_export]
-macro_rules! add_entity {
-    ($storage: expr, $archetype_id: expr, $($component: expr),+) => {
-        $storage.add_entity($archetype_id)
-        $(.with($component))*
-        .build()
+macro_rules! __replace_expr {
+    ($_t:tt $sub:expr) => {
+        $sub
     };
+}
+
+#[macro_export]
+macro_rules! entity_state {
+    ($($comp_type:ident = $component: expr ),* $(,)?) => {{
+        const TOTAL_SIZE: usize = 0 $(+ std::mem::size_of::<$comp_type>())*;
+        const N: usize =  0 $(+ $crate::__replace_expr!($component 1))*;
+
+        let mut data = std::mem::MaybeUninit::<[u8; TOTAL_SIZE]>::uninit();
+        let mut offsets = std::mem::MaybeUninit::<[$crate::ComponentInfo; N]>::uninit();
+        let mut data_ptr = data.as_mut_ptr() as *mut u8;
+        let mut data_offset = 0;
+        let mut offset_ptr = offsets.as_mut_ptr() as *mut $crate::ComponentInfo;
+
+        #[allow(unused_assignments)]
+        unsafe {
+            $(
+                let comp_size = std::mem::size_of::<$comp_type>();
+
+                std::ptr::write(data_ptr as *mut $comp_type, $component);
+
+                std::ptr::write(offset_ptr, $crate::ComponentInfo {
+                    type_id: std::any::TypeId::of::<$comp_type>(),
+                    range: data_offset..(data_offset + comp_size),
+                });
+
+                data_ptr = data_ptr.add(comp_size);
+                data_offset += comp_size;
+                offset_ptr = offset_ptr.add(1);
+            )*
+
+            $crate::EntityState::from_raw(data.assume_init(), offsets.assume_init())
+        }
+    }};
 }

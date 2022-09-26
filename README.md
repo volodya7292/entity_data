@@ -26,6 +26,7 @@ same type are stored in a contiguous vector.
 ```rust
 use entity_data::EntityStorageLayout;
 use entity_data::EntityStorage;
+use entity_data::entity_state;
 
 struct Barks {
     bark_sound: String,
@@ -37,6 +38,7 @@ impl Barks {
     }
 }
 
+#[derive(Clone)]
 struct Eats {
     eaten_food: Vec<String>,
 }
@@ -63,17 +65,20 @@ fn main() {
 
     let mut storage = EntityStorage::new(&layout);
 
-    let super_dog = storage.add_entity(type_dog)
-        .with(Dog { favorite_food: "meat".to_string(), })
-        .with(Eats { eaten_food: vec![] })
-        .with(Barks { bark_sound: "bark.ogg".to_string() })
-        .build();
+    let eats = Eats { eaten_food: vec![] };
 
-    let hummingbird = storage.add_entity(type_bird)
-        .with(Bird { weight: 0.07, habitat: "gardens".to_string() })
-        .with(Eats { eaten_food: vec![] })
-        .build();
-    
+    let super_dog = storage.add_entity(type_dog, entity_state!(
+        Dog = Dog { favorite_food: "meat".to_string(), },
+        Eats = eats.clone(),
+        Barks = Barks { bark_sound: "bark.ogg".to_string() },
+    ));
+
+    let hummingbird = storage.add_entity(type_bird, entity_state!(
+        Bird = Bird { weight: 0.07, habitat: "gardens".to_string() },
+        Eats = eats
+    ));
+
+
     let super_dog_barks = storage.get::<Barks>(&super_dog).unwrap();
     super_dog_barks.bark();
 

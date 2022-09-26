@@ -1,8 +1,9 @@
 use crate::archetype::{Archetype, ArchetypeLayout, TypeInfo};
 use crate::utils::{HashMap, HashSet};
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::collections::hash_map;
-use std::{mem, ptr, slice};
+use std::ops::Range;
+use std::{mem, ptr};
 
 /// An entity identifier.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -12,7 +13,10 @@ pub struct EntityId {
 }
 
 impl EntityId {
-    pub const NULL: Self = EntityId { archetype_id: u32::MAX, id: u32::MAX };
+    pub const NULL: Self = EntityId {
+        archetype_id: u32::MAX,
+        id: u32::MAX,
+    };
 
     pub fn new(archetype_id: u32, id: u32) -> EntityId {
         EntityId { archetype_id, id }
@@ -49,8 +53,6 @@ impl EntityStorageLayout {
 /// A container of entities.
 pub struct EntityStorage {
     archetypes: Vec<Archetype>,
-    temp_data: Vec<u8>,
-    temp_offsets: HashMap<TypeId, (usize, usize)>,
 }
 
 impl EntityStorage {
@@ -69,18 +71,81 @@ impl EntityStorage {
             );
         }
 
-        EntityStorage {
-            archetypes,
-            temp_data: vec![],
-            temp_offsets: Default::default(),
-        }
+        EntityStorage { archetypes }
     }
 
-    /// Returns `EntityBuilder` of the new entity.
-    pub fn add_entity(&mut self, archetype_id: u32) -> EntityBuilder {
-        EntityBuilder {
-            container: self,
+    /// Builds a new entity and returns its identifier.
+    ///
+    /// # Panics
+    ///
+    /// - if specified archetype is not found;
+    /// - if specified component types != archetype component types;
+    pub fn add_entity<const N: usize, const D: usize>(
+        &mut self,
+        archetype_id: u32,
+        state: EntityState<N, D>,
+    ) -> EntityId {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed(id: u32) -> ! {
+            panic!("archetype (id {}) not found", id);
+        }
+
+        #[cold]
+        #[inline(never)]
+        fn assert_failed2(c1: usize, c2: usize) -> ! {
+            panic!(
+                "entity component count ({}) != archetype component count ({})",
+                c1, c2
+            );
+        }
+
+        #[cold]
+        #[inline(never)]
+        fn assert_failed3(id: u32) -> ! {
+            panic!("TypeId doesn't exist in archetype {}", id);
+        }
+
+        let entity_id = if let Some(arch) = self.archetypes.get_mut(archetype_id as usize) {
+            if state.offsets.len() != arch.components.len() {
+                assert_failed2(state.offsets.len(), arch.components.len());
+            }
+
+            let id = if let Some(free_slot) = arch.free_slots.iter().next() {
+                arch.free_slots.remove(free_slot);
+                free_slot
+            } else {
+                arch.total_slot_count += 1;
+                arch.total_slot_count - 1
+            };
+
+            for info in state.offsets {
+                if let Some((_, data)) = arch.components.get_mut(&info.type_id) {
+                    if id == (arch.total_slot_count - 1) {
+                        data.extend(&state.data[info.range]);
+                    } else {
+                        let comp_size = info.range.len();
+                        unsafe {
+                            ptr::copy_nonoverlapping(
+                                state.data.as_ptr().add(info.range.start),
+                                data.as_mut_ptr().add(id * comp_size),
+                                comp_size,
+                            );
+                        }
+                    }
+                } else {
+                    assert_failed3(archetype_id);
+                }
+            }
+
+            id as u32
+        } else {
+            assert_failed(archetype_id);
+        };
+
+        EntityId {
             archetype_id,
+            id: entity_id,
         }
     }
 
@@ -163,108 +228,19 @@ impl<'a> ArchetypeBuilder<'a> {
     }
 }
 
-/// An entity builder.
-pub struct EntityBuilder<'a> {
-    container: &'a mut EntityStorage,
-    archetype_id: u32,
+pub struct ComponentInfo {
+    pub type_id: TypeId,
+    pub range: Range<usize>,
 }
 
-impl EntityBuilder<'_> {
-    /// Adds a component to the entity. Adding already present component will have no effect.
-    pub fn with<C: 'static>(self, component: C) -> Self {
-        let bytes = unsafe {
-            slice::from_raw_parts(&component as *const C as *const u8, mem::size_of::<C>())
-        };
-        let offset = self.container.temp_data.len();
+/// An entity state comprising of different components.
+pub struct EntityState<const N: usize, const DATA_SIZE: usize> {
+    data: [u8; DATA_SIZE],
+    offsets: [ComponentInfo; N],
+}
 
-        if let hash_map::Entry::Vacant(e) = self.container.temp_offsets.entry(component.type_id()) {
-            self.container.temp_data.extend(bytes);
-            e.insert((offset, mem::size_of_val(&component)));
-            mem::forget(component);
-        }
-
-        self
-    }
-
-    /// Builds a new entity and returns its identifier.
-    ///
-    /// # Panics
-    ///
-    /// - if specified archetype is not found;
-    /// - if specified component types != archetype component types;
-    pub fn build(self) -> EntityId {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(id: u32) -> ! {
-            panic!("archetype (id {}) not found", id);
-        }
-
-        #[cold]
-        #[inline(never)]
-        fn assert_failed2(c1: usize, c2: usize) -> ! {
-            panic!(
-                "entity component count ({}) != archetype component count ({})",
-                c1, c2
-            );
-        }
-
-        #[cold]
-        #[inline(never)]
-        fn assert_failed3(id: u32) -> ! {
-            panic!("TypeId doesn't exist in archetype {}", id);
-        }
-
-        let temp_offsets = &mut self.container.temp_offsets;
-        let temp_data = &self.container.temp_data;
-        let archetype_id = self.archetype_id;
-
-        let entity_id = if let Some(arch) = self
-            .container
-            .archetypes
-            .get_mut(self.archetype_id as usize)
-        {
-            let entity_comp_count = temp_offsets.len();
-            let arch_comp_count = arch.components.len();
-            if entity_comp_count != arch_comp_count {
-                assert_failed2(entity_comp_count, arch_comp_count);
-            }
-
-            let id = if let Some(free_slot) = arch.free_slots.iter().next() {
-                arch.free_slots.remove(free_slot);
-                free_slot
-            } else {
-                arch.total_slot_count += 1;
-                arch.total_slot_count - 1
-            };
-
-            temp_offsets.drain().for_each(|(type_id, (offset, size))| {
-                if let Some((_, data)) = arch.components.get_mut(&type_id) {
-                    if id == (arch.total_slot_count - 1) {
-                        data.extend(&temp_data[offset..(offset + size)]);
-                    } else {
-                        unsafe {
-                            ptr::copy_nonoverlapping(
-                                temp_data.as_ptr().add(offset),
-                                data.as_mut_ptr().add(id * size),
-                                size,
-                            );
-                        }
-                    }
-                } else {
-                    assert_failed3(archetype_id);
-                }
-            });
-
-            id as u32
-        } else {
-            assert_failed(archetype_id);
-        };
-
-        self.container.temp_data.clear();
-
-        EntityId {
-            archetype_id,
-            id: entity_id,
-        }
+impl<const N: usize, const D: usize> EntityState<N, D> {
+    pub fn from_raw(data: [u8; D], offsets: [ComponentInfo; N]) -> Self {
+        Self { data, offsets }
     }
 }
