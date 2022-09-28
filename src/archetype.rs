@@ -1,31 +1,37 @@
-use crate::utils::{HashMap, HashSet};
+use crate::HashMap;
 use bit_set::BitSet;
+use common::ArchetypeImpl;
 use std::any::TypeId;
 use std::hash::{Hash, Hasher};
 
+#[derive(Copy, Clone)]
+pub(crate) struct TypeInfo {
+    pub(crate) size: usize,
+    pub(crate) needs_drop: bool,
+    pub(crate) drop_func: fn(*mut u8),
+}
+
 #[derive(Clone, Eq)]
 pub(crate) struct ArchetypeLayout {
-    pub(crate) type_ids: HashSet<TypeId>,
+    sorted_type_ids: Vec<TypeId>,
     hash_val: u64,
 }
 
 impl ArchetypeLayout {
-    pub(crate) fn new(type_ids: HashSet<TypeId>) -> ArchetypeLayout {
+    pub fn new(mut type_ids: Vec<TypeId>) -> ArchetypeLayout {
+        type_ids.sort();
+
         let mut hasher = ahash::AHasher::default();
-        let mut v: Vec<TypeId> = type_ids.iter().cloned().collect();
-
-        v.sort();
-        v.hash(&mut hasher);
-
+        type_ids.hash(&mut hasher);
         let hash_val = hasher.finish();
 
-        ArchetypeLayout { type_ids, hash_val }
+        ArchetypeLayout { sorted_type_ids: type_ids, hash_val }
     }
 }
 
 impl PartialEq for ArchetypeLayout {
     fn eq(&self, other: &Self) -> bool {
-        self.type_ids == other.type_ids
+        self.sorted_type_ids == other.sorted_type_ids
     }
 }
 
@@ -35,14 +41,7 @@ impl Hash for ArchetypeLayout {
     }
 }
 
-#[derive(Copy, Clone)]
-pub(crate) struct TypeInfo {
-    pub(crate) size: usize,
-    pub(crate) needs_drop: bool,
-    pub(crate) drop_func: fn(*mut u8),
-}
-
-/// A collection of entities with layout of single combination of components.
+/// A collection of entities with unique combination of components.
 pub struct Archetype {
     pub(crate) components: HashMap<TypeId, (TypeInfo, Vec<u8>)>,
     pub(crate) free_slots: BitSet,
@@ -50,11 +49,38 @@ pub struct Archetype {
 }
 
 impl Archetype {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new<const N: usize, A: ArchetypeImpl<N>>() -> Self {
+        let components: HashMap<_, _> = A::component_infos()
+            .into_iter()
+            .map(|info| {
+                (
+                    info.type_id,
+                    (
+                        TypeInfo {
+                            size: info.range.len(),
+                            needs_drop: info.needs_drop,
+                            drop_func: info.drop_func,
+                        },
+                        vec![],
+                    ),
+                )
+            })
+            .collect();
+
         Archetype {
-            components: Default::default(),
+            components,
             free_slots: Default::default(),
             total_slot_count: 0,
+        }
+    }
+
+    pub(crate) fn allocate_slot(&mut self) -> usize {
+        if let Some(free_slot) = self.free_slots.iter().next() {
+            self.free_slots.remove(free_slot);
+            free_slot
+        } else {
+            self.total_slot_count += 1;
+            self.total_slot_count - 1
         }
     }
 
@@ -102,12 +128,13 @@ impl Archetype {
 impl Drop for Archetype {
     fn drop(&mut self) {
         for (_, (type_info, data)) in &mut self.components {
-            if type_info.needs_drop {
-                for id in 0..self.total_slot_count {
-                    if !self.free_slots.contains(id) {
-                        let ptr = unsafe { data.as_mut_ptr().add(id * type_info.size) };
-                        (type_info.drop_func)(ptr);
-                    }
+            if !type_info.needs_drop {
+                continue;
+            }
+            for id in 0..self.total_slot_count {
+                if !self.free_slots.contains(id) {
+                    let ptr = unsafe { data.as_mut_ptr().add(id * type_info.size) };
+                    (type_info.drop_func)(ptr);
                 }
             }
         }

@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "1.1.0"
+version = "1.2.0"
 authors = ["a7292969 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
@@ -10,9 +10,14 @@ repository = "https://github.com/a7292969/entity_data"
 readme = "README.md"
 license-file = "LICENSE.md"
 
+[workspace]
+members = ["common", "macros"]
+
 [dependencies]
 ahash = "0.8"
 bit-set = "0.5"
+macros = { path = "macros" }
+common = { path = "common" }
 
 [dev-dependencies]
 rand = "0.8"

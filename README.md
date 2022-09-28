@@ -14,19 +14,17 @@ A container for entity component data.
 An entity is an opaque identifier for an object.
 Each entity can have multiple components associated with it.
 Storage is based on [ECS](https://en.wikipedia.org/wiki/Entity_component_system) technique,
-but the main purpose is to efficiently store and access
+but the main purpose of this crate is to efficiently store and access
 individual components without `Box`ing them.
 
-The approach used in this library is superior to Rust's dynamic dispatch because
+The approach used in this crate is superior to Rust's dynamic dispatch because
 components can have their separate fields and components of the
 same type are stored in a contiguous vector.
 
 ## Example
 
 ```rust
-use entity_data::EntityStorageLayout;
-use entity_data::EntityStorage;
-use entity_data::entity_state;
+use entity_data::{EntityStorage, Archetype};
 
 struct Barks {
     bark_sound: String,
@@ -40,6 +38,7 @@ impl Barks {
 
 #[derive(Clone)]
 struct Eats {
+    favorite_food: String,
     eaten_food: Vec<String>,
 }
 
@@ -49,41 +48,42 @@ impl Eats {
     }
 }
 
-struct Dog {
-    favorite_food: String,
-}
-
-struct Bird {
+struct Animal {
     weight: f32,
     habitat: String,
 }
 
+#[derive(Archetype)]
+struct Dog {
+    animal: Animal,
+    barks: Barks,
+    eats: Eats,
+}
+
+#[derive(Archetype)]
+struct Bird(Animal, Eats);
+
 fn main() {
-    let mut layout = EntityStorageLayout::new();
-    let type_dog = layout.add_archetype().with::<Dog>().with::<Barks>().with::<Eats>().build();
-    let type_bird = layout.add_archetype().with::<Bird>().with::<Eats>().build();
+    let mut storage = EntityStorage::new();
 
-    let mut storage = EntityStorage::new(&layout);
+    let eats = Eats { favorite_food: "apples".to_string(), eaten_food: vec![] };
 
-    let eats = Eats { eaten_food: vec![] };
+    let super_dog = storage.add_entity(Dog {
+        animal: Animal { weight: 30.0, habitat: "forest".to_string(), },
+        barks: Barks { bark_sound: "bark.ogg".to_string(), },
+        eats: Eats { favorite_food: "meat".to_string(), eaten_food: vec![] },
+    });
 
-    let super_dog = storage.add_entity(type_dog, entity_state!(
-        Dog = Dog { favorite_food: "meat".to_string(), },
-        Eats = eats.clone(),
-        Barks = Barks { bark_sound: "bark.ogg".to_string() },
+    let hummingbird = storage.add_entity(Bird(
+        Animal { weight: 5.0, habitat: "gardens".to_string()},
+        Eats { favorite_food: "apples".to_string(), eaten_food: vec![] }
     ));
-
-    let hummingbird = storage.add_entity(type_bird, entity_state!(
-        Bird = Bird { weight: 0.07, habitat: "gardens".to_string() },
-        Eats = eats
-    ));
-
 
     let super_dog_barks = storage.get::<Barks>(&super_dog).unwrap();
     super_dog_barks.bark();
 
-    let super_dog_props = storage.get_mut::<Dog>(&super_dog).unwrap();
-    super_dog_props.favorite_food = "beans".to_string();
+    let super_dog_eats = storage.get_mut::<Eats>(&super_dog).unwrap();
+    super_dog_eats.favorite_food = "beans".to_string();
 
     let hummingbird_eats = storage.get_mut::<Eats>(&hummingbird).unwrap();
     hummingbird_eats.eat("seeds".to_string());

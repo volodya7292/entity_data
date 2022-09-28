@@ -1,9 +1,9 @@
-use crate::archetype::{Archetype, ArchetypeLayout, TypeInfo};
-use crate::utils::{HashMap, HashSet};
+use crate::archetype::{Archetype, ArchetypeLayout};
+use crate::HashMap;
+use common::{ArchetypeImpl, IsArchetype};
 use std::any::TypeId;
 use std::collections::hash_map;
-use std::ops::Range;
-use std::{mem, ptr};
+use std::{mem, ptr, slice};
 
 /// An entity identifier.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -29,134 +29,92 @@ impl Default for EntityId {
     }
 }
 
-/// A layout of the `EntityStorage`.
-/// Can be used to crate multiple `EntityStorage`s with the same archetypes.
-#[derive(Clone, Default)]
-pub struct EntityStorageLayout {
-    archetype_layouts: HashMap<ArchetypeLayout, u32>,
-    type_infos: HashMap<TypeId, TypeInfo>,
-}
-
-impl EntityStorageLayout {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add_archetype(&mut self) -> ArchetypeBuilder {
-        ArchetypeBuilder {
-            layout: self,
-            type_ids: HashSet::with_capacity(8),
-        }
-    }
-}
-
 /// A container of entities.
 pub struct EntityStorage {
     archetypes: Vec<Archetype>,
+    archetypes_by_types: HashMap<TypeId, usize>,
+    archetypes_by_layout: HashMap<ArchetypeLayout, usize>,
 }
 
 impl EntityStorage {
     /// Creates an empty `EntityStorage`.
-    pub fn new(layout: &EntityStorageLayout) -> EntityStorage {
-        let mut archetypes: Vec<Archetype> = (0..layout.archetype_layouts.len())
-            .map(|_| Archetype::new())
-            .collect();
-
-        for (arch_layout, id) in &layout.archetype_layouts {
-            archetypes[*id as usize].components.extend(
-                arch_layout
-                    .type_ids
-                    .iter()
-                    .map(|type_id| (*type_id, (layout.type_infos[type_id], Default::default()))),
-            );
+    pub fn new() -> EntityStorage {
+        EntityStorage {
+            archetypes: Vec::new(),
+            archetypes_by_types: Default::default(),
+            archetypes_by_layout: Default::default(),
         }
-
-        EntityStorage { archetypes }
     }
 
-    /// Builds a new entity and returns its identifier.
-    ///
-    /// # Panics
-    ///
-    /// - if specified archetype is not found;
-    /// - if specified component types != archetype component types;
-    pub fn add_entity<const N: usize, const D: usize>(
-        &mut self,
-        archetype_id: u32,
-        state: EntityState<N, D>,
-    ) -> EntityId {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed(id: u32) -> ! {
-            panic!("archetype (id {}) not found", id);
-        }
+    /// Creates a new entity and returns its identifier.
+    pub fn add_entity<const N: usize, S>(&mut self, state: S) -> EntityId
+    where
+        S: ArchetypeImpl<N> + 'static,
+    {
+        let arch_id = match self.archetypes_by_types.entry(TypeId::of::<S>()) {
+            hash_map::Entry::Vacant(e) => {
+                let layout = ArchetypeLayout::new(S::component_type_ids().to_vec());
 
-        #[cold]
-        #[inline(never)]
-        fn assert_failed2(c1: usize, c2: usize) -> ! {
-            panic!(
-                "entity component count ({}) != archetype component count ({})",
-                c1, c2
-            );
-        }
-
-        #[cold]
-        #[inline(never)]
-        fn assert_failed3(id: u32) -> ! {
-            panic!("TypeId doesn't exist in archetype {}", id);
-        }
-
-        let entity_id = if let Some(arch) = self.archetypes.get_mut(archetype_id as usize) {
-            if state.offsets.len() != arch.components.len() {
-                assert_failed2(state.offsets.len(), arch.components.len());
-            }
-
-            let id = if let Some(free_slot) = arch.free_slots.iter().next() {
-                arch.free_slots.remove(free_slot);
-                free_slot
-            } else {
-                arch.total_slot_count += 1;
-                arch.total_slot_count - 1
-            };
-
-            for info in state.offsets {
-                if let Some((_, data)) = arch.components.get_mut(&info.type_id) {
-                    if id == (arch.total_slot_count - 1) {
-                        data.extend(&state.data[info.range]);
-                    } else {
-                        let comp_size = info.range.len();
-                        unsafe {
-                            ptr::copy_nonoverlapping(
-                                state.data.as_ptr().add(info.range.start),
-                                data.as_mut_ptr().add(id * comp_size),
-                                comp_size,
-                            );
-                        }
+                let arch_id = match self.archetypes_by_layout.entry(layout) {
+                    hash_map::Entry::Vacant(e) => {
+                        let new_arch_id = self.archetypes.len();
+                        e.insert(new_arch_id);
+                        new_arch_id
                     }
-                } else {
-                    assert_failed3(archetype_id);
-                }
-            }
+                    hash_map::Entry::Occupied(e) => *e.get(),
+                };
 
-            id as u32
-        } else {
-            assert_failed(archetype_id);
+                e.insert(arch_id);
+                self.archetypes.push(Archetype::new::<N, S>());
+                arch_id
+            }
+            hash_map::Entry::Occupied(e) => *e.get(),
         };
 
+        // Safety: archetype at `arch_id` exists because it is created above if not present.
+        let arch = unsafe { self.archetypes.get_unchecked_mut(arch_id) };
+
+        let entity_id = arch.allocate_slot();
+
+        for info in S::component_infos() {
+            let (_, all_components_data) = arch.components.get_mut(&info.type_id).unwrap();
+            let component_data = unsafe { (&state as *const _ as *const u8).add(info.range.start) };
+            let comp_size = info.range.len();
+
+            if entity_id == (arch.total_slot_count - 1) {
+                let slice = unsafe { slice::from_raw_parts(component_data, comp_size) };
+                all_components_data.extend(slice);
+            } else {
+                unsafe {
+                    ptr::copy_nonoverlapping(
+                        component_data,
+                        all_components_data.as_mut_ptr().add(entity_id * comp_size),
+                        comp_size,
+                    );
+                }
+            }
+        }
+
+        mem::forget(state);
+
         EntityId {
-            archetype_id,
-            id: entity_id,
+            archetype_id: arch_id as u32,
+            id: entity_id as u32,
         }
     }
 
     /// Returns a reference to the specified archetype.
-    pub fn get_archetype(&self, id: u32) -> Option<&Archetype> {
-        self.archetypes.get(id as usize)
+    pub fn get_archetype<A: IsArchetype + 'static>(&self) -> Option<&Archetype> {
+        // Safety: if archetype id is present in id map, then is must definitely exist.
+        let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
+        unsafe { Some(self.archetypes.get_unchecked(arch_id)) }
     }
 
     /// Returns a mutable reference to the specified archetype.
-    pub fn get_archetype_mut(&mut self, id: u32) -> Option<&mut Archetype> {
-        self.archetypes.get_mut(id as usize)
+    pub fn get_archetype_mut<A: IsArchetype + 'static>(&mut self) -> Option<&mut Archetype> {
+        // Safety: if archetype id is present in id map, then is must definitely exist.
+        let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
+        unsafe { Some(self.archetypes.get_unchecked_mut(arch_id)) }
     }
 
     /// Returns a reference to the component `C` of the specified entity.
@@ -187,60 +145,5 @@ impl EntityStorage {
     /// Returns the number of entities in the storage.
     pub fn len(&mut self) -> usize {
         self.archetypes.iter().fold(0, |acc, arch| acc + arch.len())
-    }
-}
-
-/// An archetype builder.
-pub struct ArchetypeBuilder<'a> {
-    layout: &'a mut EntityStorageLayout,
-    type_ids: HashSet<TypeId>,
-}
-
-impl<'a> ArchetypeBuilder<'a> {
-    /// Adds a component type to the archetype layout. Adding already present component type will have no effect.
-    pub fn with<C: 'static>(mut self) -> Self {
-        let type_id = TypeId::of::<C>();
-        if let hash_map::Entry::Vacant(e) = self.layout.type_infos.entry(type_id) {
-            let drop_func = |p: *mut u8| unsafe { ptr::drop_in_place(p as *mut C) };
-            e.insert(TypeInfo {
-                size: mem::size_of::<C>(),
-                needs_drop: mem::needs_drop::<C>(),
-                drop_func,
-            });
-        }
-
-        self.type_ids.insert(type_id);
-        self
-    }
-
-    /// Returns id of the archetype. Equivalent archetypes have identical ids.
-    pub fn build(self) -> u32 {
-        let layout = ArchetypeLayout::new(self.type_ids);
-        let next_id = self.layout.archetype_layouts.len() as u32;
-
-        match self.layout.archetype_layouts.entry(layout) {
-            hash_map::Entry::Vacant(e) => {
-                e.insert(next_id);
-                next_id
-            }
-            hash_map::Entry::Occupied(e) => *e.get(),
-        }
-    }
-}
-
-pub struct ComponentInfo {
-    pub type_id: TypeId,
-    pub range: Range<usize>,
-}
-
-/// An entity state comprising of different components.
-pub struct EntityState<const N: usize, const DATA_SIZE: usize> {
-    data: [u8; DATA_SIZE],
-    offsets: [ComponentInfo; N],
-}
-
-impl<const N: usize, const D: usize> EntityState<N, D> {
-    pub fn from_raw(data: [u8; D], offsets: [ComponentInfo; N]) -> Self {
-        Self { data, offsets }
     }
 }
