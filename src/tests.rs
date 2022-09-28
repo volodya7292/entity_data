@@ -1,6 +1,6 @@
 use crate::{Archetype, EntityStorage};
-use std::convert::TryInto;
 use rand::Rng;
+use std::convert::TryInto;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Comp1 {

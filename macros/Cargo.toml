@@ -1,7 +1,10 @@
 [package]
-name = "macros"
+name = "entity_data-macros"
 version = "0.1.0"
 edition = "2021"
+authors = ["a7292969 <a7292969@gmail.com>"]
+repository = "https://github.com/a7292969/entity_data/macros"
+license-file = "../LICENSE.md"
 
 [lib]
 proc-macro = true
@@ -10,4 +13,3 @@ proc-macro = true
 syn = "1.0"
 quote = "1.0"
 proc-macro2 = "1.0"
-common = { path = "../common" }

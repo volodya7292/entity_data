@@ -82,8 +82,11 @@ mod tests;
 
 mod archetype;
 mod entity_storage;
+mod private;
+pub mod __private {
+    pub use super::private::*;
+}
 
-pub use common as __private;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
 pub use macros::Archetype;

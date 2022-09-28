@@ -1,3 +1,4 @@
+pub use memoffset::offset_of;
 use std::any::TypeId;
 use std::ops::Range;
 
@@ -14,5 +15,3 @@ pub trait ArchetypeImpl<const N: usize>: IsArchetype {
     fn component_type_ids() -> [TypeId; N];
     fn component_infos() -> [ComponentInfo; N];
 }
-
-pub use memoffset::offset_of;

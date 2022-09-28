@@ -1,6 +1,6 @@
+use crate::private::ArchetypeImpl;
 use crate::HashMap;
 use bit_set::BitSet;
-use common::ArchetypeImpl;
 use std::any::TypeId;
 use std::hash::{Hash, Hasher};
 
@@ -25,7 +25,10 @@ impl ArchetypeLayout {
         type_ids.hash(&mut hasher);
         let hash_val = hasher.finish();
 
-        ArchetypeLayout { sorted_type_ids: type_ids, hash_val }
+        ArchetypeLayout {
+            sorted_type_ids: type_ids,
+            hash_val,
+        }
     }
 }
 

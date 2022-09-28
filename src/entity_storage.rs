@@ -1,6 +1,6 @@
 use crate::archetype::{Archetype, ArchetypeLayout};
+use crate::private::{ArchetypeImpl, IsArchetype};
 use crate::HashMap;
-use common::{ArchetypeImpl, IsArchetype};
 use std::any::TypeId;
 use std::collections::hash_map;
 use std::{mem, ptr, slice};
