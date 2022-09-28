@@ -3,6 +3,7 @@ name = "entity_data-macros"
 version = "0.1.0"
 edition = "2021"
 authors = ["a7292969 <a7292969@gmail.com>"]
+description = "Macros for entity_data crate."
 repository = "https://github.com/a7292969/entity_data/macros"
 license-file = "../LICENSE.md"
 
