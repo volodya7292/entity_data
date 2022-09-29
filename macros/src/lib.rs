@@ -4,11 +4,7 @@ use syn::{parse_macro_input, DeriveInput};
 
 #[proc_macro_derive(Archetype)]
 pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
-    let main_crate = if std::env::var("CARGO_PKG_NAME").unwrap() == "entity_data" {
-        quote!(::entity_data)
-    } else {
-        quote!(crate)
-    };
+    let main_crate = quote!(::entity_data);
 
     let DeriveInput {
         ident,
@@ -75,7 +71,6 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
     fields.extend(field_impls.into_iter());
 
     quote! {
-
         impl #generics #main_crate::IsArchetype for #ident #generics #where_clause {}
 
         impl #generics #main_crate::ArchetypeImpl<#fields_len> for #ident #generics #where_clause {
