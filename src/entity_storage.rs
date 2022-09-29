@@ -1,6 +1,5 @@
 use crate::archetype::{Archetype, ArchetypeLayout};
-use crate::private::{ArchetypeImpl, IsArchetype};
-use crate::HashMap;
+use crate::{ArchetypeImpl, HashMap, IsArchetype};
 use std::any::TypeId;
 use std::collections::hash_map;
 use std::{mem, ptr, slice};
@@ -75,22 +74,24 @@ impl EntityStorage {
         let arch = unsafe { self.archetypes.get_unchecked_mut(arch_id) };
 
         let entity_id = arch.allocate_slot();
+        let state_ptr = &state as *const _ as *const u8;
 
-        for info in S::component_infos() {
-            let (_, all_components_data) = arch.components.get_mut(&info.type_id).unwrap();
-            let component_data = unsafe { (&state as *const _ as *const u8).add(info.range.start) };
+        for (i, info) in S::component_infos().into_iter().enumerate() {
+            // Safety: component at `i` exists because `S` is ensured to be present in the archetype.
+            let (_, component_storage) = unsafe { arch.components.get_unchecked_mut(i) };
+
+            let component_data = unsafe { state_ptr.add(info.range.start) };
             let comp_size = info.range.len();
 
             if entity_id == (arch.total_slot_count - 1) {
                 let slice = unsafe { slice::from_raw_parts(component_data, comp_size) };
-                all_components_data.extend(slice);
+                component_storage.extend(slice);
             } else {
                 unsafe {
-                    ptr::copy_nonoverlapping(
-                        component_data,
-                        all_components_data.as_mut_ptr().add(entity_id * comp_size),
-                        comp_size,
-                    );
+                    let dst_ptr = component_storage
+                        .as_mut_ptr()
+                        .add(entity_id as usize * comp_size);
+                    ptr::copy_nonoverlapping(component_data, dst_ptr, comp_size);
                 }
             }
         }
@@ -99,38 +100,34 @@ impl EntityStorage {
 
         EntityId {
             archetype_id: arch_id as u32,
-            id: entity_id as u32,
+            id: entity_id,
         }
     }
 
     /// Returns a reference to the specified archetype.
     pub fn get_archetype<A: IsArchetype + 'static>(&self) -> Option<&Archetype> {
-        // Safety: if archetype id is present in id map, then is must definitely exist.
+        // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
         unsafe { Some(self.archetypes.get_unchecked(arch_id)) }
     }
 
     /// Returns a mutable reference to the specified archetype.
     pub fn get_archetype_mut<A: IsArchetype + 'static>(&mut self) -> Option<&mut Archetype> {
-        // Safety: if archetype id is present in id map, then is must definitely exist.
+        // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
         unsafe { Some(self.archetypes.get_unchecked_mut(arch_id)) }
     }
 
     /// Returns a reference to the component `C` of the specified entity.
     pub fn get<C: 'static>(&self, entity: &EntityId) -> Option<&C> {
-        self.archetypes
-            .get(entity.archetype_id as usize)
-            .map(|arch| arch.get(entity.id))
-            .flatten()
+        let arch = self.archetypes.get(entity.archetype_id as usize)?;
+        arch.get(entity.id)
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity.
     pub fn get_mut<C: 'static>(&mut self, entity: &EntityId) -> Option<&mut C> {
-        self.archetypes
-            .get_mut(entity.archetype_id as usize)
-            .map(|arch| arch.get_mut(entity.id))
-            .flatten()
+        let arch = self.archetypes.get_mut(entity.archetype_id as usize)?;
+        arch.get_mut(entity.id)
     }
 
     /// Removes an entity from the storage. Returns `true` if the entity was present in the storage.

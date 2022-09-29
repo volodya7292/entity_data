@@ -96,5 +96,15 @@ fn it_works() {
     storage.remove(&e1);
     storage.remove(&e2);
 
+    let v00 = storage.get::<Comp1>(&e0);
+    let v01 = storage.get::<Comp2>(&e0);
+    let v1 = storage.get::<Comp1>(&e1);
+    let v2 = storage.get::<Comp2>(&e2);
+
+    assert_eq!(v00, None);
+    assert_eq!(v01, None);
+    assert_eq!(v1, None);
+    assert_eq!(v2, None);
+
     assert_eq!(storage.len(), 0);
 }

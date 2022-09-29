@@ -42,17 +42,17 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
 
             let offset = if let Some(field_ident) = &field.ident {
                 quote! {
-                    #main_crate::__private::offset_of!(#ident, #field_ident)
+                    #main_crate::private::offset_of!(#ident, #field_ident)
                 }
             } else {
                 let i = syn::Index::from(i);
                 quote! {
-                    #main_crate::__private::offset_of!(#ident, #i)
+                    #main_crate::private::offset_of!(#ident, #i)
                 }
             };
 
             quote! {
-                #main_crate::__private::ComponentInfo {
+                #main_crate::private::ComponentInfo {
                     type_id: ::std::any::TypeId::of::<#field_ty>(),
                     range: {
                         let offset = #offset;
@@ -76,14 +76,14 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
 
     quote! {
 
-        impl #generics #main_crate::__private::IsArchetype for #ident #generics #where_clause {}
+        impl #generics #main_crate::IsArchetype for #ident #generics #where_clause {}
 
-        impl #generics #main_crate::__private::ArchetypeImpl<#fields_len> for #ident #generics #where_clause {
+        impl #generics #main_crate::ArchetypeImpl<#fields_len> for #ident #generics #where_clause {
             fn component_type_ids() -> [::std::any::TypeId; #fields_len] {
                 [#field_types]
             }
 
-            fn component_infos() -> [#main_crate::__private::ComponentInfo; #fields_len] {
+            fn component_infos() -> [#main_crate::private::ComponentInfo; #fields_len] {
                 [#fields]
             }
         }

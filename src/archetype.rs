@@ -1,4 +1,4 @@
-use crate::private::ArchetypeImpl;
+use crate::private::ComponentInfo;
 use crate::HashMap;
 use bit_set::BitSet;
 use std::any::TypeId;
@@ -19,7 +19,7 @@ pub(crate) struct ArchetypeLayout {
 
 impl ArchetypeLayout {
     pub fn new(mut type_ids: Vec<TypeId>) -> ArchetypeLayout {
-        type_ids.sort();
+        type_ids.sort_unstable();
 
         let mut hasher = ahash::AHasher::default();
         type_ids.hash(&mut hasher);
@@ -45,71 +45,109 @@ impl Hash for ArchetypeLayout {
 }
 
 /// A collection of entities with unique combination of components.
+/// An archetype can hold a maximum of 2^32-1 entities.
 pub struct Archetype {
-    pub(crate) components: HashMap<TypeId, (TypeInfo, Vec<u8>)>,
+    pub(crate) components: Vec<(TypeInfo, Vec<u8>)>,
+    pub(crate) components_by_types: HashMap<TypeId, usize>,
     pub(crate) free_slots: BitSet,
-    pub(crate) total_slot_count: usize,
+    pub(crate) total_slot_count: u32,
+    pub(crate) components_need_drops: bool,
 }
 
 impl Archetype {
+    pub const MAX_ENTITIES: u32 = u32::MAX - 1;
+
     pub(crate) fn new<const N: usize, A: ArchetypeImpl<N>>() -> Self {
-        let components: HashMap<_, _> = A::component_infos()
-            .into_iter()
+        let comp_infos = A::component_infos();
+
+        let components: Vec<_> = comp_infos
+            .iter()
             .map(|info| {
                 (
-                    info.type_id,
-                    (
-                        TypeInfo {
-                            size: info.range.len(),
-                            needs_drop: info.needs_drop,
-                            drop_func: info.drop_func,
-                        },
-                        vec![],
-                    ),
+                    TypeInfo {
+                        size: info.range.len(),
+                        needs_drop: info.needs_drop,
+                        drop_func: info.drop_func,
+                    },
+                    vec![],
                 )
             })
             .collect();
 
+        let components_by_types: HashMap<_, _> = comp_infos
+            .iter()
+            .enumerate()
+            .map(|(i, info)| (info.type_id, i))
+            .collect();
+
+        let components_need_drops = comp_infos.iter().any(|info| info.needs_drop);
+
         Archetype {
             components,
+            components_by_types,
             free_slots: Default::default(),
             total_slot_count: 0,
+            components_need_drops,
         }
     }
 
-    pub(crate) fn allocate_slot(&mut self) -> usize {
+    pub(crate) fn allocate_slot(&mut self) -> u32 {
+        #[cold]
+        #[inline(never)]
+        fn assert_failed() -> ! {
+            panic!("Archetype: out of slots. A maximum number of entities (2^32-1) is reached.");
+        }
+
         if let Some(free_slot) = self.free_slots.iter().next() {
             self.free_slots.remove(free_slot);
-            free_slot
-        } else {
+            free_slot as u32
+        } else if self.total_slot_count < Self::MAX_ENTITIES {
             self.total_slot_count += 1;
             self.total_slot_count - 1
+        } else {
+            assert_failed();
         }
+    }
+
+    pub fn is_present(&self, entity_id: u32) -> bool {
+        entity_id < self.total_slot_count && !self.free_slots.contains(entity_id as usize)
     }
 
     /// Returns a reference to the component `C` of the specified entity id.
     pub fn get<C: 'static>(&self, entity_id: u32) -> Option<&C> {
-        self.components
-            .get(&TypeId::of::<C>())
-            .map(|(_, data)| unsafe { &*((data.as_ptr() as *const C).offset(entity_id as isize)) })
+        if !self.is_present(entity_id) {
+            return None;
+        }
+        let id = *self.components_by_types.get(&TypeId::of::<C>())?;
+        let (_, data) = self.components.get(id)?;
+        unsafe {
+            let ptr = (data.as_ptr() as *const C).offset(entity_id as isize);
+            Some(&*ptr)
+        }
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity id.
     pub fn get_mut<C: 'static>(&mut self, entity_id: u32) -> Option<&mut C> {
-        self.components
-            .get_mut(&TypeId::of::<C>())
-            .map(|(_, data)| unsafe {
-                &mut *((data.as_mut_ptr() as *mut C).offset(entity_id as isize))
-            })
+        if !self.is_present(entity_id) {
+            return None;
+        }
+        let id = *self.components_by_types.get(&TypeId::of::<C>())?;
+        let (_, data) = self.components.get_mut(id)?;
+        unsafe {
+            let ptr = (data.as_mut_ptr() as *mut C).offset(entity_id as isize);
+            Some(&mut *ptr)
+        }
     }
 
     /// Removes an entity from the archetype. Returns `true` if the entity was present in the archetype.
     pub fn remove(&mut self, entity_id: u32) -> bool {
-        let id = entity_id as usize;
-        let is_present = id < self.total_slot_count && !self.free_slots.insert(id);
+        let mut is_present = entity_id < self.total_slot_count;
 
-        if is_present {
-            for (_, (type_info, data)) in &mut self.components {
+        is_present &= !self.free_slots.insert(entity_id as usize);
+
+        if is_present && self.components_need_drops {
+            let id = entity_id as usize;
+            for (type_info, data) in &mut self.components {
                 if type_info.needs_drop {
                     unsafe {
                         let ptr = data.as_mut_ptr().add(id * type_info.size);
@@ -124,22 +162,32 @@ impl Archetype {
 
     /// Returns the number of entities in the archetype.
     pub fn len(&self) -> usize {
-        self.total_slot_count - self.free_slots.len()
+        self.total_slot_count as usize - self.free_slots.len()
     }
 }
 
 impl Drop for Archetype {
     fn drop(&mut self) {
-        for (_, (type_info, data)) in &mut self.components {
+        if !self.components_need_drops {
+            return;
+        }
+        for (type_info, data) in &mut self.components {
             if !type_info.needs_drop {
                 continue;
             }
             for id in 0..self.total_slot_count {
-                if !self.free_slots.contains(id) {
-                    let ptr = unsafe { data.as_mut_ptr().add(id * type_info.size) };
+                if !self.free_slots.contains(id as usize) {
+                    let ptr = unsafe { data.as_mut_ptr().add(id as usize * type_info.size) };
                     (type_info.drop_func)(ptr);
                 }
             }
         }
     }
+}
+
+pub trait IsArchetype {}
+
+pub trait ArchetypeImpl<const N: usize>: IsArchetype {
+    fn component_type_ids() -> [TypeId; N];
+    fn component_infos() -> [ComponentInfo; N];
 }
