@@ -15,6 +15,7 @@
 //! ```
 //! use entity_data::{EntityStorage, Archetype};
 //!
+//! #[derive(Clone)]
 //! struct Barks {
 //!     bark_sound: String,
 //! }
@@ -37,19 +38,20 @@
 //!     }
 //! }
 //!
+//! #[derive(Clone)]
 //! struct Animal {
 //!     weight: f32,
 //!     habitat: String,
 //! }
 //!
-//! #[derive(Archetype)]
+//! #[derive(Clone, Archetype)]
 //! struct Dog {
 //!     animal: Animal,
 //!     barks: Barks,
 //!     eats: Eats,
 //! }
 //!
-//! #[derive(Archetype)]
+//! #[derive(Clone, Archetype)]
 //! struct Bird(Animal, Eats);
 //!
 //! fn main() {
@@ -84,8 +86,8 @@ mod entity_storage;
 pub mod private;
 
 pub use archetype::AnyState;
-pub use archetype::ArchetypeImpl;
-pub use archetype::IsArchetype;
+pub use archetype::ArchetypeState;
+pub use archetype::StaticArchetype;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
 pub use macros::Archetype;

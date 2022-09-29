@@ -71,15 +71,29 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
     fields.extend(field_impls.into_iter());
 
     quote! {
-        impl #generics #main_crate::IsArchetype for #ident #generics #where_clause {}
+        impl #generics #main_crate::StaticArchetype for #ident #generics #where_clause {
+            const N_COMPONENTS: usize = #fields_len;
+        }
 
-        impl #generics #main_crate::ArchetypeImpl<#fields_len> for #ident #generics #where_clause {
-            fn component_type_ids() -> [::std::any::TypeId; #fields_len] {
-                [#field_types]
+        impl #generics #main_crate::ArchetypeState for #ident #generics #where_clause {
+            fn ty(&self) -> ::std::any::TypeId {
+                ::std::any::TypeId::of::<#ident>()
             }
 
-            fn component_infos() -> [#main_crate::private::ComponentInfo; #fields_len] {
-                [#fields]
+            fn as_ptr(&self) -> *const u8 {
+                self as *const _ as *const u8
+            }
+
+            fn forget(self) {
+                ::std::mem::forget(self);
+            }
+
+            fn component_type_ids(&self) -> #main_crate::private::SmallVec<[::std::any::TypeId; #main_crate::private::MAX_INFOS_ON_STACK]> {
+                #main_crate::private::smallvec![#field_types]
+            }
+
+            fn component_infos(&self) -> #main_crate::private::SmallVec<[#main_crate::private::ComponentInfo; #main_crate::private::MAX_INFOS_ON_STACK]> {
+                #main_crate::private::smallvec![#fields]
             }
         }
     }

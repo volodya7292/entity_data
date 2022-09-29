@@ -31,6 +31,7 @@ same type are stored in a contiguous vector.
 ```rust
 use entity_data::{EntityStorage, Archetype};
 
+#[derive(Clone)]
 struct Barks {
     bark_sound: String,
 }
@@ -53,25 +54,24 @@ impl Eats {
     }
 }
 
+#[derive(Clone)]
 struct Animal {
     weight: f32,
     habitat: String,
 }
 
-#[derive(Archetype)]
+#[derive(Clone, Archetype)]
 struct Dog {
     animal: Animal,
     barks: Barks,
     eats: Eats,
 }
 
-#[derive(Archetype)]
+#[derive(Clone, Archetype)]
 struct Bird(Animal, Eats);
 
 fn main() {
     let mut storage = EntityStorage::new();
-
-    let eats = Eats { favorite_food: "apples".to_string(), eaten_food: vec![] };
 
     let super_dog = storage.add_entity(Dog {
         animal: Animal { weight: 30.0, habitat: "forest".to_string(), },
@@ -80,7 +80,7 @@ fn main() {
     });
 
     let hummingbird = storage.add_entity(Bird(
-        Animal { weight: 5.0, habitat: "gardens".to_string()},
+        Animal { weight: 5.0, habitat: "gardens".to_string() },
         Eats { favorite_food: "apples".to_string(), eaten_food: vec![] }
     ));
 

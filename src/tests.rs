@@ -1,4 +1,4 @@
-use crate::{Archetype, EntityStorage, ArchetypeImpl};
+use crate::{Archetype, ArchetypeState, EntityStorage};
 use rand::Rng;
 use std::convert::TryInto;
 
@@ -40,18 +40,18 @@ impl Comp2 {
     }
 }
 
-#[derive(Archetype)]
+#[derive(Clone, Archetype)]
 struct Archetype12 {
     comp1: Comp1,
     comp2: Comp2,
 }
 
-#[derive(Archetype)]
+#[derive(Clone, Archetype)]
 struct Archetype1 {
     comp1: Comp1,
 }
 
-#[derive(Archetype)]
+#[derive(Clone, Archetype)]
 struct Archetype2(Comp2);
 
 #[test]
@@ -75,7 +75,7 @@ fn it_works() {
     let _e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let _e2 = storage.add_entity(Archetype2(e2v.clone()));
-    let e2 = storage.add_entity_any(Archetype2(e2v.clone()).into_any());
+    let e2 = storage.add_entity(Archetype2(e2v.clone()).into_any());
 
     assert_eq!(storage.count_entities(), 6);
 

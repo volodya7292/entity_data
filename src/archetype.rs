@@ -1,8 +1,10 @@
 use crate::private::ComponentInfo;
-use crate::HashMap;
+use crate::{private, HashMap};
 use bit_set::BitSet;
+use smallvec::SmallVec;
 use std::any::{Any, TypeId};
 use std::hash::{Hash, Hasher};
+use std::mem::MaybeUninit;
 use std::{mem, ptr, slice};
 
 #[derive(Clone, Eq)]
@@ -189,12 +191,17 @@ impl Drop for Archetype {
 }
 
 /// Defines archetype objects (entity states).
-pub trait IsArchetype {}
+pub trait StaticArchetype: 'static {
+    const N_COMPONENTS: usize;
+}
 
 /// Defines archetype objects (entity states) with definite components.
-pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
-    fn component_type_ids() -> [TypeId; N];
-    fn component_infos() -> [ComponentInfo; N];
+pub trait ArchetypeState: Sized + Clone + 'static {
+    fn ty(&self) -> TypeId;
+    fn as_ptr(&self) -> *const u8;
+    fn forget(self);
+    fn component_type_ids(&self) -> SmallVec<[TypeId; private::MAX_INFOS_ON_STACK]>;
+    fn component_infos(&self) -> SmallVec<[ComponentInfo; private::MAX_INFOS_ON_STACK]>;
 
     fn into_any(self) -> AnyState
     where
@@ -203,7 +210,21 @@ pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
         let ty = self.type_id();
         let size = mem::size_of_val(&self);
         let mut data = Vec::<u8>::with_capacity(size);
+
+        let clone_func = |p: *const u8| {
+            let size = mem::size_of::<Self>();
+            let mut data = Vec::<u8>::with_capacity(size);
+            unsafe {
+                let clone = Self::clone(&*(p as *const Self));
+                ptr::write(data.as_mut_ptr() as *mut Self, clone);
+                data.set_len(size);
+            }
+            data
+        };
         let drop_func = |p: *mut u8| unsafe { ptr::drop_in_place(p as *mut Self) };
+
+        let component_type_ids = self.component_type_ids().to_vec();
+        let component_infos = self.component_infos().to_vec();
 
         unsafe {
             ptr::write(data.as_mut_ptr() as *mut Self, self);
@@ -213,9 +234,10 @@ pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
         AnyState {
             ty,
             data,
-            component_type_ids: || Self::component_type_ids().to_vec(),
-            component_infos: || Self::component_infos().to_vec(),
+            component_type_ids,
+            component_infos,
             needs_drop: mem::needs_drop::<Self>(),
+            clone_func,
             drop_func,
         }
     }
@@ -225,10 +247,74 @@ pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
 pub struct AnyState {
     pub(crate) ty: TypeId,
     pub(crate) data: Vec<u8>,
-    pub(crate) component_type_ids: fn() -> Vec<TypeId>,
-    pub(crate) component_infos: fn() -> Vec<ComponentInfo>,
+    pub(crate) component_type_ids: Vec<TypeId>,
+    pub(crate) component_infos: Vec<ComponentInfo>,
     pub(crate) needs_drop: bool,
+    pub(crate) clone_func: fn(*const u8) -> Vec<u8>,
     pub(crate) drop_func: fn(*mut u8),
+}
+
+impl AnyState {
+    pub fn into_definite<S: StaticArchetype>(mut self) -> Option<S> {
+        if TypeId::of::<S>() != self.ty {
+            return None;
+        }
+        self.needs_drop = false;
+
+        let mut result = MaybeUninit::<S>::uninit();
+
+        unsafe {
+            let src_ptr = self.data.as_ptr() as *const S;
+            src_ptr.copy_to_nonoverlapping(result.as_mut_ptr(), self.data.len());
+            Some(result.assume_init())
+        }
+    }
+}
+
+impl<T: StaticArchetype + ArchetypeState> From<T> for AnyState {
+    fn from(state: T) -> Self {
+        state.into_any()
+    }
+}
+
+impl ArchetypeState for AnyState {
+    fn ty(&self) -> TypeId {
+        self.ty
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.data.as_ptr()
+    }
+
+    fn forget(mut self) {
+        self.needs_drop = false;
+    }
+
+    fn component_type_ids(&self) -> SmallVec<[TypeId; private::MAX_INFOS_ON_STACK]> {
+        SmallVec::from_vec(self.component_type_ids.clone())
+    }
+
+    fn component_infos(&self) -> SmallVec<[ComponentInfo; private::MAX_INFOS_ON_STACK]> {
+        SmallVec::from_vec(self.component_infos.clone())
+    }
+
+    fn into_any(self) -> AnyState {
+        panic!("Cannot cast dynamic state.");
+    }
+}
+
+impl Clone for AnyState {
+    fn clone(&self) -> Self {
+        Self {
+            ty: self.ty,
+            data: (self.clone_func)(self.data.as_ptr()),
+            component_type_ids: self.component_type_ids.clone(),
+            component_infos: self.component_infos.clone(),
+            needs_drop: self.needs_drop,
+            clone_func: self.clone_func,
+            drop_func: self.drop_func,
+        }
+    }
 }
 
 impl Drop for AnyState {

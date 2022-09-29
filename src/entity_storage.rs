@@ -1,6 +1,5 @@
-use crate::archetype::{AnyState, Archetype, ArchetypeLayout};
-use crate::private::ComponentInfo;
-use crate::{ArchetypeImpl, HashMap, IsArchetype};
+use crate::archetype::{Archetype, ArchetypeLayout};
+use crate::{ArchetypeState, HashMap, StaticArchetype};
 use std::any::TypeId;
 use std::collections::hash_map;
 use std::mem;
@@ -46,51 +45,23 @@ impl EntityStorage {
         }
     }
 
-    fn get_or_create_archetype_by_layout(
-        archetypes_by_layout: &mut HashMap<ArchetypeLayout, usize>,
-        archetypes: &mut Vec<Archetype>,
-        component_type_ids: Vec<TypeId>,
-        component_infos: &[ComponentInfo],
-    ) -> usize {
-        let layout = ArchetypeLayout::new(component_type_ids);
-
-        match archetypes_by_layout.entry(layout) {
+    fn get_or_create_archetype<S: ArchetypeState>(&mut self, state: &S) -> usize {
+        match self.archetypes_by_types.entry(state.ty()) {
             hash_map::Entry::Vacant(e) => {
-                let new_arch_id = archetypes.len();
-                archetypes.push(Archetype::new(component_infos));
+                let layout = ArchetypeLayout::new(state.component_type_ids().into_vec());
 
-                e.insert(new_arch_id);
-                new_arch_id
-            }
-            hash_map::Entry::Occupied(e) => *e.get(),
-        }
-    }
+                let arch_id = match self.archetypes_by_layout.entry(layout) {
+                    hash_map::Entry::Vacant(e) => {
+                        let new_arch_id = self.archetypes.len();
+                        self.archetypes
+                            .push(Archetype::new(&state.component_infos()));
 
-    fn get_or_create_archetype<const N: usize, S: ArchetypeImpl<N> + 'static>(&mut self) -> usize {
-        match self.archetypes_by_types.entry(TypeId::of::<S>()) {
-            hash_map::Entry::Vacant(e) => {
-                let arch_id = Self::get_or_create_archetype_by_layout(
-                    &mut self.archetypes_by_layout,
-                    &mut self.archetypes,
-                    S::component_type_ids().to_vec(),
-                    &S::component_infos(),
-                );
-                e.insert(arch_id);
-                arch_id
-            }
-            hash_map::Entry::Occupied(e) => *e.get(),
-        }
-    }
+                        e.insert(new_arch_id);
+                        new_arch_id
+                    }
+                    hash_map::Entry::Occupied(e) => *e.get(),
+                };
 
-    fn get_or_create_archetype_any(&mut self, state: &AnyState) -> usize {
-        match self.archetypes_by_types.entry(state.ty) {
-            hash_map::Entry::Vacant(e) => {
-                let arch_id = Self::get_or_create_archetype_by_layout(
-                    &mut self.archetypes_by_layout,
-                    &mut self.archetypes,
-                    (state.component_type_ids)(),
-                    &(state.component_infos)(),
-                );
                 e.insert(arch_id);
                 arch_id
             }
@@ -99,32 +70,16 @@ impl EntityStorage {
     }
 
     /// Creates a new entity and returns its identifier.
-    pub fn add_entity<const N: usize, S>(&mut self, state: S) -> EntityId
+    pub fn add_entity<S>(&mut self, state: S) -> EntityId
     where
-        S: ArchetypeImpl<N> + 'static,
+        S: ArchetypeState,
     {
-        let arch_id = self.get_or_create_archetype::<N, S>();
+        let arch_id = self.get_or_create_archetype::<S>(&state);
         // Safety: archetype at `arch_id` exists because it is created above if not present.
         let arch = unsafe { self.archetypes.get_unchecked_mut(arch_id) };
 
         // Safety: layout of the archetype is ensured by `get_or_create_archetype_any`.
-        let entity_id = unsafe { arch.add_entity_raw(&state as *const _ as *const u8) };
-        mem::forget(state);
-
-        EntityId {
-            archetype_id: arch_id as u32,
-            id: entity_id,
-        }
-    }
-
-    /// Creates a new entity and returns its identifier.
-    pub fn add_entity_any(&mut self, state: AnyState) -> EntityId {
-        let arch_id = self.get_or_create_archetype_any(&state);
-        // Safety: archetype at `arch_id` exists because it is created if not present.
-        let arch = unsafe { self.archetypes.get_unchecked_mut(arch_id) };
-
-        // Safety: layout of the archetype is ensured by `get_or_create_archetype_any`.
-        let entity_id = unsafe { arch.add_entity_raw(state.data.as_ptr()) };
+        let entity_id = unsafe { arch.add_entity_raw(state.as_ptr()) };
         mem::forget(state);
 
         EntityId {
@@ -134,14 +89,14 @@ impl EntityStorage {
     }
 
     /// Returns a reference to the specified archetype.
-    pub fn get_archetype<A: IsArchetype + 'static>(&self) -> Option<&Archetype> {
+    pub fn get_archetype<A: StaticArchetype>(&self) -> Option<&Archetype> {
         // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
         unsafe { Some(self.archetypes.get_unchecked(arch_id)) }
     }
 
     /// Returns a mutable reference to the specified archetype.
-    pub fn get_archetype_mut<A: IsArchetype + 'static>(&mut self) -> Option<&mut Archetype> {
+    pub fn get_archetype_mut<A: StaticArchetype>(&mut self) -> Option<&mut Archetype> {
         // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
         unsafe { Some(self.archetypes.get_unchecked_mut(arch_id)) }
