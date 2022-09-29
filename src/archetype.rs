@@ -188,8 +188,10 @@ impl Drop for Archetype {
     }
 }
 
+/// Defines archetype objects (entity states).
 pub trait IsArchetype {}
 
+/// Defines archetype objects (entity states) with definite components.
 pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
     fn component_type_ids() -> [TypeId; N];
     fn component_infos() -> [ComponentInfo; N];
@@ -219,6 +221,7 @@ pub trait ArchetypeImpl<const N: usize>: IsArchetype + Sized {
     }
 }
 
+/// Entity state with arbitrary components.
 pub struct AnyState {
     pub(crate) ty: TypeId,
     pub(crate) data: Vec<u8>,

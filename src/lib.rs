@@ -55,7 +55,6 @@
 //! fn main() {
 //!     let mut storage = EntityStorage::new();
 //!
-//!
 //!     let super_dog = storage.add_entity(Dog {
 //!         animal: Animal { weight: 30.0, habitat: "forest".to_string(), },
 //!         barks: Barks { bark_sound: "bark.ogg".to_string(), },
@@ -84,10 +83,11 @@ mod archetype;
 mod entity_storage;
 pub mod private;
 
+pub use archetype::AnyState;
+pub use archetype::ArchetypeImpl;
+pub use archetype::IsArchetype;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
-pub use archetype::IsArchetype;
-pub use archetype::ArchetypeImpl;
 pub use macros::Archetype;
 
 pub(crate) type HashMap<K, V> = ahash::AHashMap<K, V>;
