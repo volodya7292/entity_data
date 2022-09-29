@@ -1,4 +1,4 @@
-use crate::{Archetype, EntityStorage};
+use crate::{Archetype, EntityStorage, ArchetypeImpl};
 use rand::Rng;
 use std::convert::TryInto;
 
@@ -75,9 +75,9 @@ fn it_works() {
     let _e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let _e2 = storage.add_entity(Archetype2(e2v.clone()));
-    let e2 = storage.add_entity(Archetype2(e2v.clone()));
+    let e2 = storage.add_entity_any(Archetype2(e2v.clone()).into_any());
 
-    assert_eq!(storage.len(), 6);
+    assert_eq!(storage.count_entities(), 6);
 
     let v00 = storage.get::<Comp1>(&e0).unwrap();
     let v01 = storage.get::<Comp2>(&e0).unwrap();
@@ -106,5 +106,5 @@ fn it_works() {
     assert_eq!(v1, None);
     assert_eq!(v2, None);
 
-    assert_eq!(storage.len(), 0);
+    assert_eq!(storage.count_entities(), 0);
 }
