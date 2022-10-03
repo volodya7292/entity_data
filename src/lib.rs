@@ -83,14 +83,16 @@ mod tests;
 
 mod archetype;
 mod entity_storage;
+mod state;
+
 pub mod private;
 
-pub use archetype::AnyState;
-pub use archetype::ArchetypeState;
-pub use archetype::StaticArchetype;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;
 pub use macros::Archetype;
+pub use state::AnyState;
+pub use state::ArchetypeState;
+pub use state::StaticArchetype;
 
 pub(crate) type HashMap<K, V> = ahash::AHashMap<K, V>;
 

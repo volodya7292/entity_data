@@ -88,12 +88,24 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
                 ::std::mem::forget(self);
             }
 
-            fn component_type_ids(&self) -> #main_crate::private::SmallVec<[::std::any::TypeId; #main_crate::private::MAX_INFOS_ON_STACK]> {
-                #main_crate::private::smallvec![#field_types]
-            }
-
-            fn component_infos(&self) -> #main_crate::private::SmallVec<[#main_crate::private::ComponentInfo; #main_crate::private::MAX_INFOS_ON_STACK]> {
-                #main_crate::private::smallvec![#fields]
+            fn metadata(&self) -> fn() -> #main_crate::private::ArchetypeMetadata {
+                || #main_crate::private::ArchetypeMetadata {
+                    component_type_ids: || #main_crate::private::smallvec![#field_types],
+                    component_infos: || #main_crate::private::smallvec![#fields],
+                    needs_drop: ::std::mem::needs_drop::<Self>(),
+                    clone_func: |p: *const u8| {
+                        let size = ::std::mem::size_of::<Self>();
+                        let mut data = ::std::vec::Vec::<u8>::with_capacity(size);
+                        unsafe {
+                            let curr = &*(p as *const Self);
+                            let dst_ptr = (data.as_mut_ptr() as *mut Self);
+                            dst_ptr.write(Self::clone(curr));
+                            data.set_len(size);
+                        }
+                        data
+                    },
+                    drop_func: |p: *mut u8| unsafe { ::std::ptr::drop_in_place(p as *mut Self) },
+                }
             }
         }
     }

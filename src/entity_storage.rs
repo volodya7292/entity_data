@@ -1,8 +1,8 @@
 use crate::archetype::{Archetype, ArchetypeLayout};
-use crate::{ArchetypeState, HashMap, StaticArchetype};
+use crate::{HashMap};
 use std::any::TypeId;
 use std::collections::hash_map;
-use std::mem;
+use crate::{ArchetypeState, StaticArchetype};
 
 /// An entity identifier.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -48,13 +48,14 @@ impl EntityStorage {
     fn get_or_create_archetype<S: ArchetypeState>(&mut self, state: &S) -> usize {
         match self.archetypes_by_types.entry(state.ty()) {
             hash_map::Entry::Vacant(e) => {
-                let layout = ArchetypeLayout::new(state.component_type_ids().into_vec());
+                let meta = state.metadata()();
+                let layout = ArchetypeLayout::new((meta.component_type_ids)().into_vec());
 
                 let arch_id = match self.archetypes_by_layout.entry(layout) {
                     hash_map::Entry::Vacant(e) => {
                         let new_arch_id = self.archetypes.len();
                         self.archetypes
-                            .push(Archetype::new(&state.component_infos()));
+                            .push(Archetype::new(&(meta.component_infos)()));
 
                         e.insert(new_arch_id);
                         new_arch_id
@@ -80,7 +81,7 @@ impl EntityStorage {
 
         // Safety: layout of the archetype is ensured by `get_or_create_archetype_any`.
         let entity_id = unsafe { arch.add_entity_raw(state.as_ptr()) };
-        mem::forget(state);
+        state.forget();
 
         EntityId {
             archetype_id: arch_id as u32,

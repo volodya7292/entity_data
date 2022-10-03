@@ -1,6 +1,7 @@
-use crate::{Archetype, ArchetypeState, EntityStorage};
+use crate::{Archetype, EntityStorage};
 use rand::Rng;
 use std::convert::TryInto;
+use crate::StaticArchetype;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Comp1 {
@@ -75,7 +76,7 @@ fn it_works() {
     let _e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
     let _e2 = storage.add_entity(Archetype2(e2v.clone()));
-    let e2 = storage.add_entity(Archetype2(e2v.clone()).into_any());
+    let e2 = storage.add_entity(Archetype2(e2v.clone()).into_any().clone());
 
     assert_eq!(storage.count_entities(), 6);
 

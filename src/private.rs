@@ -13,3 +13,12 @@ pub struct ComponentInfo {
     pub needs_drop: bool,
     pub drop_func: fn(*mut u8),
 }
+
+#[derive(Copy, Clone)]
+pub struct ArchetypeMetadata {
+    pub component_type_ids: fn() -> SmallVec<[TypeId; MAX_INFOS_ON_STACK]>,
+    pub component_infos: fn() -> SmallVec<[ComponentInfo; MAX_INFOS_ON_STACK]>,
+    pub needs_drop: bool,
+    pub clone_func: fn(*const u8) -> Vec<u8>,
+    pub drop_func: fn(*mut u8),
+}
