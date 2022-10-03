@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 use std::{mem, ptr};
 
 /// Defines archetype objects (entity states) with definite components.
-pub trait ArchetypeState: Send + 'static {
+pub trait ArchetypeState: Send + Sync + 'static {
     fn ty(&self) -> TypeId;
     fn as_ptr(&self) -> *const u8;
     fn forget(self);

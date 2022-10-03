@@ -2,9 +2,7 @@ use crate::private::ComponentInfo;
 use crate::HashMap;
 use bit_set::BitSet;
 use std::any::TypeId;
-use std::cell::Cell;
 use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
 use std::{ptr, slice};
 
 #[derive(Clone, Eq)]
@@ -48,8 +46,6 @@ pub struct Archetype {
     pub(crate) free_slots: BitSet,
     pub(crate) total_slot_count: u32,
     pub(crate) components_need_drops: bool,
-    /// `ArchetypeState` may not be `Sync`, hence `Archetype` may not be either.
-    _unsync: PhantomData<Cell<()>>,
 }
 
 impl Archetype {
@@ -75,7 +71,6 @@ impl Archetype {
             free_slots: Default::default(),
             total_slot_count: 0,
             components_need_drops,
-            _unsync: Default::default(),
         }
     }
 
