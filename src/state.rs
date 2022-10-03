@@ -4,7 +4,7 @@ use std::mem::MaybeUninit;
 use std::{mem, ptr};
 
 /// Defines archetype objects (entity states) with definite components.
-pub trait ArchetypeState: Sized + 'static {
+pub trait ArchetypeState: Send + 'static {
     fn ty(&self) -> TypeId;
     fn as_ptr(&self) -> *const u8;
     fn forget(self);
@@ -17,10 +17,10 @@ pub trait StaticArchetype: ArchetypeState {
 
     fn into_any(self) -> AnyState
     where
-        Self: 'static,
+        Self: Sized + 'static,
     {
         let ty = self.type_id();
-        let size = mem::size_of_val(&self);
+        let size = mem::size_of::<Self>();
         let metadata = self.metadata();
 
         let mut data = Vec::<u8>::with_capacity(size);
@@ -79,7 +79,7 @@ impl ArchetypeState for AnyState {
     }
 }
 
-impl<T: StaticArchetype + ArchetypeState> From<T> for AnyState {
+impl<T: StaticArchetype> From<T> for AnyState {
     fn from(state: T) -> Self {
         state.into_any()
     }
