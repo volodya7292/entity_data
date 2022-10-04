@@ -87,6 +87,7 @@ mod state;
 
 pub mod private;
 
+pub use archetype::Archetype;
 pub use archetype::Component;
 pub use entity_storage::EntityId;
 pub use entity_storage::EntityStorage;

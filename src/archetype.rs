@@ -149,7 +149,7 @@ impl Archetype {
     }
 
     /// Removes an entity from the archetype. Returns `true` if the entity was present in the archetype.
-    pub fn remove(&mut self, entity_id: u32) -> bool {
+    pub(crate) fn remove(&mut self, entity_id: u32) -> bool {
         let mut is_present = entity_id < self.total_slot_count;
 
         let free_slot_was_occupied = self.free_slots.insert(entity_id as usize);
