@@ -1,11 +1,11 @@
-use crate::archetype::{Archetype, ArchetypeLayout};
+use crate::archetype::{Archetype, ArchetypeLayout, Component};
 use crate::{HashMap};
 use std::any::TypeId;
 use std::collections::hash_map;
 use crate::{ArchetypeState, StaticArchetype};
 
 /// An entity identifier.
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct EntityId {
     pub archetype_id: u32,
     pub id: u32,
@@ -91,26 +91,26 @@ impl EntityStorage {
 
     /// Returns a reference to the specified archetype.
     pub fn get_archetype<A: StaticArchetype>(&self) -> Option<&Archetype> {
-        // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
+        // Safety: if archetype id is present in the id map, then is must definitely exist.
         unsafe { Some(self.archetypes.get_unchecked(arch_id)) }
     }
 
     /// Returns a mutable reference to the specified archetype.
     pub fn get_archetype_mut<A: StaticArchetype>(&mut self) -> Option<&mut Archetype> {
-        // Safety: if archetype id is present in the id map, then is must definitely exist.
         let arch_id = *self.archetypes_by_types.get(&TypeId::of::<A>())?;
+        // Safety: if archetype id is present in the id map, then is must definitely exist.
         unsafe { Some(self.archetypes.get_unchecked_mut(arch_id)) }
     }
 
     /// Returns a reference to the component `C` of the specified entity.
-    pub fn get<C: 'static>(&self, entity: &EntityId) -> Option<&C> {
+    pub fn get<C: Component>(&self, entity: &EntityId) -> Option<&C> {
         let arch = self.archetypes.get(entity.archetype_id as usize)?;
         arch.get(entity.id)
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity.
-    pub fn get_mut<C: 'static>(&mut self, entity: &EntityId) -> Option<&mut C> {
+    pub fn get_mut<C: Component>(&mut self, entity: &EntityId) -> Option<&mut C> {
         let arch = self.archetypes.get_mut(entity.archetype_id as usize)?;
         arch.get_mut(entity.id)
     }

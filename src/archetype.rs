@@ -5,6 +5,10 @@ use std::any::TypeId;
 use std::hash::{Hash, Hasher};
 use std::{ptr, slice};
 
+pub trait Component: Send + Sync + 'static {}
+
+impl<T> Component for T where T: Send + Sync + 'static {}
+
 #[derive(Clone, Eq)]
 pub(crate) struct ArchetypeLayout {
     sorted_type_ids: Vec<TypeId>,
@@ -100,11 +104,13 @@ impl Archetype {
             let component_data = state_ptr.add(info.range.start);
             let comp_size = info.range.len();
 
-            if entity_id == (self.total_slot_count - 1) {
+            let dst_idx = entity_id as usize * comp_size;
+
+            if dst_idx == storage.len() {
                 let slice = slice::from_raw_parts(component_data, comp_size);
                 storage.extend(slice);
             } else {
-                let dst_ptr = storage.as_mut_ptr().add(entity_id as usize * comp_size);
+                let dst_ptr = storage.as_mut_ptr().add(dst_idx);
                 ptr::copy_nonoverlapping(component_data, dst_ptr, comp_size);
             }
         }
@@ -117,7 +123,7 @@ impl Archetype {
     }
 
     /// Returns a reference to the component `C` of the specified entity id.
-    pub fn get<C: 'static>(&self, entity_id: u32) -> Option<&C> {
+    pub fn get<C: Component>(&self, entity_id: u32) -> Option<&C> {
         if !self.is_present(entity_id) {
             return None;
         }
@@ -130,7 +136,7 @@ impl Archetype {
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity id.
-    pub fn get_mut<C: 'static>(&mut self, entity_id: u32) -> Option<&mut C> {
+    pub fn get_mut<C: Component>(&mut self, entity_id: u32) -> Option<&mut C> {
         if !self.is_present(entity_id) {
             return None;
         }
@@ -146,7 +152,8 @@ impl Archetype {
     pub fn remove(&mut self, entity_id: u32) -> bool {
         let mut is_present = entity_id < self.total_slot_count;
 
-        is_present &= !self.free_slots.insert(entity_id as usize);
+        let free_slot_was_occupied = self.free_slots.insert(entity_id as usize);
+        is_present &= free_slot_was_occupied;
 
         if is_present && self.components_need_drops {
             let id = entity_id as usize;

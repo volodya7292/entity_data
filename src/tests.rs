@@ -1,7 +1,7 @@
+use crate::StaticArchetype;
 use crate::{Archetype, EntityStorage};
 use rand::Rng;
 use std::convert::TryInto;
-use crate::StaticArchetype;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct Comp1 {
@@ -56,7 +56,7 @@ struct Archetype1 {
 struct Archetype2(Comp2);
 
 #[test]
-fn it_works() {
+fn general() {
     let mut storage = EntityStorage::new();
 
     let e00v = Comp1::new();
@@ -108,4 +108,28 @@ fn it_works() {
     assert_eq!(v2, None);
 
     assert_eq!(storage.count_entities(), 0);
+}
+
+#[test]
+fn add_modify_remove_add() {
+    let mut storage = EntityStorage::new();
+
+    let e = storage.add_entity(Archetype1 {
+        comp1: Comp1 {
+            a: 123,
+            b: Default::default(),
+        },
+    });
+
+    storage.get_mut::<Comp1>(&e).unwrap().a = 230;
+    storage.remove(&e);
+
+    let e2 = storage.add_entity(Archetype1 {
+        comp1: Comp1 {
+            a: 123,
+            b: Default::default(),
+        },
+    });
+
+    assert_eq!(storage.get::<Comp1>(&e2).unwrap().a, 123);
 }
