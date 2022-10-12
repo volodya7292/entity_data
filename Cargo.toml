@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "1.6.5"
+version = "1.7.0"
 authors = ["a7292969 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
@@ -15,7 +15,7 @@ members = ["macros"]
 
 [dependencies]
 ahash = "0.8"
-bit-set = "0.5"
+bitvec = "1.0"
 memoffset = "0.6"
 smallvec = { version = "1.9", features = ["const_generics"] }
 macros = { package = "entity_data-macros", path = "macros", version = "1.3" }
