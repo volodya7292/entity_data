@@ -1,8 +1,9 @@
-use crate::archetype::{ArchetypeLayout, ArchetypeStorage, Component};
+use crate::archetype::{ArchetypeLayout, ArchetypeStorage};
 use crate::{ArchetypeId, Entity, HashMap};
 use crate::{ArchetypeState, StaticArchetype};
 use std::any::TypeId;
 use std::collections::hash_map;
+use crate::archetype::component_storage::Component;
 
 /// A container of entities.
 pub struct EntityStorage {

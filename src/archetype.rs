@@ -1,15 +1,15 @@
-use crate::component_storage::ComponentStorageRef;
+pub mod component_storage;
+pub mod entities;
+
 use crate::private::ComponentInfo;
 use crate::{ArchetypeState, EntityId, HashMap};
-use bitvec::vec::BitVec;
+use component_storage::Component;
+use component_storage::ComponentStorageRef;
+use entities::Entities;
 use std::any::TypeId;
 use std::cell::UnsafeCell;
 use std::hash::{Hash, Hasher};
 use std::{ptr, slice};
-
-pub trait Component: Send + Sync + 'static {}
-
-impl<T> Component for T where T: Send + Sync + 'static {}
 
 #[derive(Clone, Eq)]
 pub(crate) struct ArchetypeLayout {
@@ -49,20 +49,11 @@ impl Hash for ArchetypeLayout {
 pub struct ArchetypeStorage {
     pub(crate) components: Vec<(ComponentInfo, UnsafeCell<Vec<u8>>)>,
     pub(crate) components_by_types: HashMap<TypeId, usize>,
-    pub(crate) occupied_slots: BitVec,
+    pub(crate) entities: Entities,
     pub(crate) components_need_drops: bool,
 }
 
-const fn const_min(a: usize, b: usize) -> usize {
-    [a, b][(a < b) as usize]
-}
-
 impl ArchetypeStorage {
-    const MAX_BITVEC_BITS: usize = bitvec::slice::BitSlice::<usize, bitvec::order::Lsb0>::MAX_BITS;
-    const MAX_SLOTS: usize = u32::MAX as usize - 1;
-
-    pub const MAX_ENTITIES: u32 = const_min(Self::MAX_SLOTS, Self::MAX_BITVEC_BITS) as u32;
-
     pub(crate) fn new(comp_infos: &[ComponentInfo]) -> Self {
         let components: Vec<_> = comp_infos
             .iter()
@@ -80,27 +71,13 @@ impl ArchetypeStorage {
         ArchetypeStorage {
             components,
             components_by_types,
-            occupied_slots: Default::default(),
+            entities: Default::default(),
             components_need_drops,
         }
     }
 
     fn allocate_slot(&mut self) -> EntityId {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed() -> ! {
-            panic!("Archetype: out of slots. A maximum number of entities (2^32-1) is reached.");
-        }
-
-        if let Some(free_slot) = self.occupied_slots.iter_zeros().next() {
-            self.occupied_slots.set(free_slot, true);
-            free_slot as EntityId
-        } else if (self.occupied_slots.len() as u32) < Self::MAX_ENTITIES {
-            self.occupied_slots.push(true);
-            (self.occupied_slots.len() - 1) as EntityId
-        } else {
-            assert_failed();
-        }
+        self.entities.allocate_slot()
     }
 
     /// Safety: `S` must be of the same component layout as the archetype.
@@ -137,9 +114,7 @@ impl ArchetypeStorage {
 
     /// Returns `true` if the archetype contains the specified entity.
     pub fn contains(&self, entity_id: EntityId) -> bool {
-        self.occupied_slots
-            .get(entity_id as usize)
-            .map_or(false, |v| *v)
+        self.entities.contains(entity_id)
     }
 
     #[inline]
@@ -180,13 +155,9 @@ impl ArchetypeStorage {
 
     /// Removes an entity from the archetype. Returns `true` if the entity was present in the archetype.
     pub(crate) fn remove(&mut self, entity_id: EntityId) -> bool {
-        if entity_id >= self.occupied_slots.len() as EntityId {
-            return false;
-        }
+        let was_present = self.entities.free(entity_id);
 
-        let is_present = self.occupied_slots.replace(entity_id as usize, false);
-
-        if is_present && self.components_need_drops {
+        if was_present && self.components_need_drops {
             let id = entity_id as usize;
             for (type_info, data) in &mut self.components {
                 if type_info.needs_drop {
@@ -198,12 +169,12 @@ impl ArchetypeStorage {
             }
         }
 
-        is_present
+        was_present
     }
 
     /// Returns the number of entities in the archetype.
     pub fn count_entities(&self) -> usize {
-        self.occupied_slots.count_ones()
+        self.entities.count()
     }
 }
 
@@ -216,7 +187,7 @@ impl Drop for ArchetypeStorage {
             if !type_info.needs_drop {
                 continue;
             }
-            for id in self.occupied_slots.iter_ones() {
+            for id in self.entities.iter() {
                 let ptr = unsafe {
                     data.get_mut()
                         .as_mut_ptr()

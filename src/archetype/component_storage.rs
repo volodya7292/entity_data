@@ -1,6 +1,11 @@
-use crate::{ArchetypeStorage, Component, EntityId};
+use crate::archetype::entities::Entities;
+use crate::{ArchetypeStorage, EntityId};
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
+
+pub trait Component: Send + Sync + 'static {}
+
+impl<T> Component for T where T: Send + Sync + 'static {}
 
 pub struct ComponentStorageRef<'a, C> {
     pub(crate) archetype: &'a ArchetypeStorage,
@@ -56,24 +61,21 @@ impl<'a, C: Component> ComponentStorageRef<'a, C> {
     /// Returns an iterator over all components.
     pub fn iter(&self) -> impl Iterator<Item = &'a C> + '_ {
         self.archetype
-            .occupied_slots
-            .iter_zeros()
-            .map(|id| unsafe { self.get_unchecked(id as EntityId) })
+            .entities
+            .iter()
+            .map(|id| unsafe { self.get_unchecked(id) })
     }
 
     /// Returns an iterator that allows to modifying each component.
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &'a mut C> + '_ {
         self.archetype
-            .occupied_slots
-            .iter_zeros()
+            .entities
+            .iter()
             .map(|id| unsafe { self.get_mut_unchecked(id as EntityId) })
     }
 
     /// Returns an iterator over all entities present in this storage.
-    pub fn entities(&self) -> impl Iterator + '_ {
-        self.archetype
-            .occupied_slots
-            .iter_zeros()
-            .map(|id| id as EntityId)
+    pub fn entities(&self) -> &Entities {
+        &self.archetype.entities
     }
 }

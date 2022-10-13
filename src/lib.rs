@@ -82,16 +82,16 @@
 mod tests;
 
 mod archetype;
-mod component_storage;
 mod entity;
 mod entity_storage;
 mod state;
 
 pub mod private;
 
+pub use archetype::component_storage::Component;
+pub use archetype::component_storage::ComponentStorageRef;
+pub use archetype::entities::Entities;
 pub use archetype::ArchetypeStorage;
-pub use archetype::Component;
-pub use component_storage::ComponentStorageRef;
 pub use entity::*;
 pub use entity_storage::EntityStorage;
 pub use macros::Archetype;
