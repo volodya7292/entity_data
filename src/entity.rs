@@ -1,27 +1,29 @@
+/// An archetype identifier.
 pub type ArchetypeId = u32;
-pub type EntityId = u32;
+/// An entity identifier within an archetype.
+pub type ArchEntityId = u32;
 
 /// An entity identifier.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct Entity {
+pub struct EntityId {
     pub archetype_id: ArchetypeId,
-    pub id: EntityId,
+    pub id: ArchEntityId,
 }
 
-impl Entity {
-    pub const NULL: Self = Entity {
+impl EntityId {
+    pub const NULL: Self = EntityId {
         archetype_id: u32::MAX,
         id: u32::MAX,
     };
 
     /// Constructs a new entity identifier.
-    pub fn new(archetype_id: u32, id: u32) -> Entity {
-        Entity { archetype_id, id }
+    pub fn new(archetype_id: ArchetypeId, id: ArchEntityId) -> EntityId {
+        EntityId { archetype_id, id }
     }
 }
 
-impl Default for Entity {
+impl Default for EntityId {
     fn default() -> Self {
-        Entity::NULL
+        EntityId::NULL
     }
 }

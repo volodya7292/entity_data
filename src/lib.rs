@@ -81,23 +81,27 @@
 #[cfg(test)]
 mod tests;
 
-mod archetype;
-mod entity;
-mod entity_storage;
-mod state;
-
+pub mod archetype;
+pub mod entity;
+pub mod entity_storage;
 pub mod private;
+pub mod state;
+pub mod system;
 
-pub use archetype::component_storage::Component;
-pub use archetype::component_storage::ComponentStorageRef;
-pub use archetype::entities::Entities;
+pub use archetype::component::Component;
+pub use archetype::entities::ArchetypeEntities;
 pub use archetype::ArchetypeStorage;
-pub use entity::*;
+pub use entity::EntityId;
+pub use entity_storage::component::ComponentGlobalAccess;
+pub use entity_storage::component::ComponentGlobalIter;
+pub use entity_storage::component::ComponentGlobalIterMut;
 pub use entity_storage::EntityStorage;
 pub use macros::Archetype;
 pub use state::AnyState;
 pub use state::ArchetypeState;
 pub use state::StaticArchetype;
+pub use system::System;
+pub use system::SystemHandler;
 
 pub(crate) type HashMap<K, V> = ahash::AHashMap<K, V>;
 

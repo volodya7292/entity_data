@@ -1,13 +1,13 @@
-pub mod component_storage;
+pub mod component;
 pub mod entities;
 
+use crate::archetype::component::{ComponentStorageMut, ComponentStorageRef, UnsafeVec};
+use crate::entity::ArchEntityId;
 use crate::private::ComponentInfo;
-use crate::{ArchetypeState, EntityId, HashMap};
-use component_storage::Component;
-use component_storage::ComponentStorageRef;
-use entities::Entities;
+use crate::{ArchetypeState, HashMap};
+use component::Component;
+use entities::ArchetypeEntities;
 use std::any::TypeId;
-use std::cell::UnsafeCell;
 use std::hash::{Hash, Hasher};
 use std::{ptr, slice};
 
@@ -47,9 +47,9 @@ impl Hash for ArchetypeLayout {
 /// A collection of entities with unique combination of components.
 /// An archetype can hold a maximum of 2^32-1 entities.
 pub struct ArchetypeStorage {
-    pub(crate) components: Vec<(ComponentInfo, UnsafeCell<Vec<u8>>)>,
+    pub(crate) components: Vec<(ComponentInfo, UnsafeVec)>,
     pub(crate) components_by_types: HashMap<TypeId, usize>,
-    pub(crate) entities: Entities,
+    pub(crate) entities: ArchetypeEntities,
     pub(crate) components_need_drops: bool,
 }
 
@@ -57,7 +57,7 @@ impl ArchetypeStorage {
     pub(crate) fn new(comp_infos: &[ComponentInfo]) -> Self {
         let components: Vec<_> = comp_infos
             .iter()
-            .map(|info| (info.clone(), UnsafeCell::new(vec![])))
+            .map(|info| (info.clone(), Default::default()))
             .collect();
 
         let components_by_types: HashMap<_, _> = comp_infos
@@ -76,7 +76,7 @@ impl ArchetypeStorage {
         }
     }
 
-    fn allocate_slot(&mut self) -> EntityId {
+    fn allocate_slot(&mut self) -> ArchEntityId {
         self.entities.allocate_slot()
     }
 
@@ -113,7 +113,7 @@ impl ArchetypeStorage {
     }
 
     /// Returns `true` if the archetype contains the specified entity.
-    pub fn contains(&self, entity_id: EntityId) -> bool {
+    pub fn contains(&self, entity_id: ArchEntityId) -> bool {
         self.entities.contains(entity_id)
     }
 
@@ -123,38 +123,38 @@ impl ArchetypeStorage {
         let (_, data) = self.components.get(id)?;
 
         Some(ComponentStorageRef {
-            archetype: self,
+            entities: &self.entities,
             data,
             _ty: Default::default(),
         })
     }
 
     #[inline]
-    pub fn component_mut<C: Component>(&mut self) -> Option<ComponentStorageRef<C>> {
+    pub fn component_mut<C: Component>(&mut self) -> Option<ComponentStorageMut<C>> {
         let id = *self.components_by_types.get(&TypeId::of::<C>())?;
-        let (_, data) = self.components.get(id)?;
+        let (_, data) = self.components.get_mut(id)?;
 
-        Some(ComponentStorageRef {
-            archetype: self,
+        Some(ComponentStorageMut {
+            entities: &self.entities,
             data,
             _ty: Default::default(),
         })
     }
 
     /// Returns a reference to the component `C` of the specified entity id.
-    pub fn get<C: Component>(&self, entity_id: EntityId) -> Option<&C> {
+    pub fn get<C: Component>(&self, entity_id: ArchEntityId) -> Option<&C> {
         let component = self.component::<C>()?;
         component.get(entity_id)
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity id.
-    pub fn get_mut<C: Component>(&mut self, entity_id: EntityId) -> Option<&mut C> {
+    pub fn get_mut<C: Component>(&mut self, entity_id: ArchEntityId) -> Option<&mut C> {
         let mut component = self.component_mut::<C>()?;
         component.get_mut(entity_id)
     }
 
     /// Removes an entity from the archetype. Returns `true` if the entity was present in the archetype.
-    pub(crate) fn remove(&mut self, entity_id: EntityId) -> bool {
+    pub(crate) fn remove(&mut self, entity_id: ArchEntityId) -> bool {
         let was_present = self.entities.free(entity_id);
 
         if was_present && self.components_need_drops {
@@ -198,3 +198,5 @@ impl Drop for ArchetypeStorage {
         }
     }
 }
+
+unsafe impl Sync for ArchetypeStorage {}

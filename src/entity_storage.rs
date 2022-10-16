@@ -1,15 +1,21 @@
+pub mod component;
+
+use crate::archetype::component::Component;
+use crate::archetype::entities::EntitiesIter;
 use crate::archetype::{ArchetypeLayout, ArchetypeStorage};
-use crate::{ArchetypeId, Entity, HashMap};
+use crate::entity::ArchetypeId;
+use crate::entity_storage::component::{ComponentGlobalAccess, GenericComponentGlobalAccess};
 use crate::{ArchetypeState, StaticArchetype};
+use crate::{EntityId, HashMap};
 use std::any::TypeId;
 use std::collections::hash_map;
-use crate::archetype::component_storage::Component;
 
 /// A container of entities.
 pub struct EntityStorage {
-    archetypes: Vec<ArchetypeStorage>,
-    archetypes_by_types: HashMap<TypeId, usize>,
-    archetypes_by_layout: HashMap<ArchetypeLayout, usize>,
+    pub(crate) archetypes: Vec<ArchetypeStorage>,
+    pub(crate) archetypes_by_types: HashMap<TypeId, usize>,
+    pub(crate) archetypes_by_layout: HashMap<ArchetypeLayout, usize>,
+    pub(crate) component_to_archetypes_map: HashMap<TypeId, Vec<usize>>,
 }
 
 impl EntityStorage {
@@ -19,6 +25,7 @@ impl EntityStorage {
             archetypes: Vec::new(),
             archetypes_by_types: Default::default(),
             archetypes_by_layout: Default::default(),
+            component_to_archetypes_map: Default::default(),
         }
     }
 
@@ -31,8 +38,17 @@ impl EntityStorage {
                 let arch_id = match self.archetypes_by_layout.entry(layout) {
                     hash_map::Entry::Vacant(e) => {
                         let new_arch_id = self.archetypes.len();
-                        self.archetypes
-                            .push(ArchetypeStorage::new(&(meta.component_infos)()));
+                        let archetype = ArchetypeStorage::new(&(meta.component_infos)());
+
+                        // Map components to the new archetype
+                        for (info, _) in &archetype.components {
+                            self.component_to_archetypes_map
+                                .entry(info.type_id)
+                                .or_insert(Default::default())
+                                .push(new_arch_id);
+                        }
+
+                        self.archetypes.push(archetype);
 
                         e.insert(new_arch_id);
                         new_arch_id
@@ -48,7 +64,7 @@ impl EntityStorage {
     }
 
     /// Creates a new entity and returns its identifier.
-    pub fn add_entity<S>(&mut self, state: S) -> Entity
+    pub fn add_entity<S>(&mut self, state: S) -> EntityId
     where
         S: ArchetypeState,
     {
@@ -60,7 +76,7 @@ impl EntityStorage {
         // Safety: layout of the archetype is ensured by `get_or_create_archetype_any`.
         let entity_id = arch.add_entity(state);
 
-        Entity {
+        EntityId {
             archetype_id: arch_id as u32,
             id: entity_id,
         }
@@ -97,30 +113,34 @@ impl EntityStorage {
     }
 
     /// Returns `true` if the storage contains the specified entity.
-    pub fn contains(&self, entity: Entity) -> bool {
-        self.archetypes
-            .get(entity.archetype_id as usize)
-            .map_or(false, |arch| arch.contains(entity.id))
+    pub fn contains(&self, entity: EntityId) -> bool {
+        self.entities().contains(entity)
     }
 
     /// Returns a reference to the component `C` of the specified entity.
-    pub fn get<C: Component>(&self, entity: &Entity) -> Option<&C> {
+    pub fn get<C: Component>(&self, entity: &EntityId) -> Option<&C> {
         let arch = self.archetypes.get(entity.archetype_id as usize)?;
         arch.get(entity.id)
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity.
-    pub fn get_mut<C: Component>(&mut self, entity: &Entity) -> Option<&mut C> {
+    pub fn get_mut<C: Component>(&mut self, entity: &EntityId) -> Option<&mut C> {
         let arch = self.archetypes.get_mut(entity.archetype_id as usize)?;
         arch.get_mut(entity.id)
     }
 
     /// Removes an entity from the storage. Returns `true` if the entity was present in the storage.
-    pub fn remove(&mut self, entity: &Entity) -> bool {
+    pub fn remove(&mut self, entity: &EntityId) -> bool {
         if let Some(arch) = self.archetypes.get_mut(entity.archetype_id as usize) {
             arch.remove(entity.id)
         } else {
             false
+        }
+    }
+
+    pub fn entities(&self) -> AllEntities {
+        AllEntities {
+            archetypes: &self.archetypes,
         }
     }
 
@@ -130,9 +150,110 @@ impl EntityStorage {
     }
 
     /// Returns the number of entities in the storage.
-    pub fn count_entities(&mut self) -> usize {
+    pub fn count_entities(&self) -> usize {
+        self.entities().count()
+    }
+
+    /// Returns global access to all archetypes with component `C`.
+    pub fn component<C: Component>(
+        &self,
+    ) -> ComponentGlobalAccess<C, GenericComponentGlobalAccess<'_>, &()> {
+        let generic = unsafe { self.global_component_by_id(TypeId::of::<C>(), false) };
+
+        ComponentGlobalAccess {
+            generic,
+            _ty: Default::default(),
+            _mutability: Default::default(),
+        }
+    }
+
+    /// Returns mutable global access to all archetypes with component `C`.
+    pub fn component_mut<C: Component>(
+        &mut self,
+    ) -> ComponentGlobalAccess<C, GenericComponentGlobalAccess<'_>, &mut ()> {
+        let generic = unsafe { self.global_component_by_id(TypeId::of::<C>(), true) };
+
+        ComponentGlobalAccess {
+            generic,
+            _ty: Default::default(),
+            _mutability: Default::default(),
+        }
+    }
+
+    /// Safety: mutable borrow must be unique.
+    pub(crate) unsafe fn global_component_by_id(
+        &self,
+        ty: TypeId,
+        mutable: bool,
+    ) -> GenericComponentGlobalAccess {
+        let archetype_ids: &[usize] = self
+            .component_to_archetypes_map
+            .get(&ty)
+            .map_or(&[], |v| v.as_slice());
+
+        GenericComponentGlobalAccess {
+            filtered_archetype_ids: archetype_ids,
+            all_archetypes: &self.archetypes,
+            all_entities: self.entities(),
+            mutable,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct AllEntities<'a> {
+    pub(crate) archetypes: &'a Vec<ArchetypeStorage>,
+}
+
+impl AllEntities<'_> {
+    /// Returns `true` if the storage contains the specified entity.
+    pub fn contains(&self, entity: EntityId) -> bool {
+        self.archetypes
+            .get(entity.archetype_id as usize)
+            .map_or(false, |arch| arch.contains(entity.id))
+    }
+
+    /// Returns the number of entities in the storage.
+    pub fn count(&self) -> usize {
         self.archetypes
             .iter()
             .fold(0, |acc, arch| acc + arch.count_entities())
+    }
+
+    pub fn iter(&self) -> AllEntitiesIter {
+        AllEntitiesIter {
+            remaining_entities: self.count(),
+            archetypes: &self.archetypes,
+            next_arch_id: 0,
+            curr_iter: None,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct AllEntitiesIter<'a> {
+    remaining_entities: usize,
+    archetypes: &'a [ArchetypeStorage],
+    next_arch_id: ArchetypeId,
+    curr_iter: Option<EntitiesIter<'a>>,
+}
+
+impl Iterator for AllEntitiesIter<'_> {
+    type Item = EntityId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(arch_entity_id) = self.curr_iter.map(|mut v| v.next()).flatten() {
+                self.remaining_entities -= 1;
+                return Some(EntityId::new(self.next_arch_id, arch_entity_id));
+            } else {
+                let arch = self.archetypes.get(self.next_arch_id as usize)?;
+                self.curr_iter = Some(arch.entities.iter());
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.remaining_entities, Some(self.remaining_entities))
     }
 }

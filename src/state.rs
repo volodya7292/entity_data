@@ -41,6 +41,7 @@ pub struct AnyState {
 }
 
 impl AnyState {
+    /// Converts the state into definite with static type.
     pub fn into_static<S: StaticArchetype>(mut self) -> Option<S> {
         if TypeId::of::<S>() != self.ty {
             return None;

@@ -2,8 +2,9 @@ use crate::StaticArchetype;
 use crate::{Archetype, EntityStorage};
 use rand::Rng;
 use std::convert::TryInto;
+use ahash::HashSet;
 
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Comp1 {
     a: u32,
     b: [u32; 4],
@@ -89,6 +90,13 @@ fn general() {
     assert_eq!(&e01v, v01);
     assert_eq!(&e1v, v1);
     assert_eq!(&e2v, v2);
+
+    let all_comp1: Vec<_> = storage.component::<Comp1>().iter().cloned().collect();
+    let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
+
+    assert_eq!(all_comp1.len(), 4);
+    assert!(all_comp1_set.contains(&e00v));
+    assert!(all_comp1_set.contains(&e1v));
 
     storage.remove(&_e0);
     storage.remove(&_e1);
