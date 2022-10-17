@@ -2,8 +2,9 @@ use crate::entity_storage::component::{ComponentGlobalAccess, GenericComponentGl
 use crate::entity_storage::AllEntities;
 use crate::{Component, EntityStorage, HashMap};
 use std::any::TypeId;
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::fmt::Debug;
+use std::pin::Pin;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ComponentMutability(bool);
@@ -14,13 +15,13 @@ pub trait SystemHandler: Send + Sync {
 
 /// A system context.
 pub struct System<'a> {
-    handler: Box<dyn SystemHandler + 'a>,
+    handler: Box<&'a mut (dyn SystemHandler + 'a)>,
     components: HashMap<TypeId, ComponentMutability>,
 }
 
 impl<'a> System<'a> {
     /// Creates a system with data handler.
-    pub fn new(handler: impl SystemHandler + 'a) -> Self {
+    pub fn new(handler: &'a mut (impl SystemHandler + 'a)) -> Self {
         Self {
             handler: Box::new(handler),
             components: Default::default(),
@@ -45,31 +46,36 @@ impl<'a> System<'a> {
 /// Represents all available components to a system.
 pub struct SystemData<'a> {
     entities: AllEntities<'a>,
-    global_components: HashMap<TypeId, RefCell<GenericComponentGlobalAccess<'a>>>,
+    global_components:
+        UnsafeCell<HashMap<TypeId, Pin<Box<RefCell<GenericComponentGlobalAccess<'a>>>>>>,
 }
 
 impl<'a> SystemData<'a> {
-    fn get_or_create_component(
-        &mut self,
+    unsafe fn get_or_create_component(
+        &self,
         ty: TypeId,
     ) -> &mut RefCell<GenericComponentGlobalAccess<'a>> {
-        self.global_components.entry(ty).or_insert_with(|| {
-            RefCell::new(GenericComponentGlobalAccess {
+        let global_components = &mut *self.global_components.get();
+
+        // Modifying the hashmap is safe because referenced values are wrapped in Pin<Box<>>.
+        global_components.entry(ty).or_insert_with(|| {
+            Box::pin(RefCell::new(GenericComponentGlobalAccess {
                 filtered_archetype_ids: &[],
                 all_archetypes: &[],
                 all_entities: self.entities,
                 // Safety: true is allowed here because there's nothing to modify.
                 mutable: true,
-            })
+            }))
         })
     }
 
     /// Borrows the component.
     /// Panics if the component is mutably borrowed.
     pub fn component<C: Component>(
-        &mut self,
+        &self,
     ) -> ComponentGlobalAccess<C, Ref<GenericComponentGlobalAccess<'a>>, &()> {
-        let generic = self.get_or_create_component(TypeId::of::<C>());
+        // This is safe because the mutable reference gets dropped afterwards.
+        let generic = unsafe { self.get_or_create_component(TypeId::of::<C>()) };
 
         ComponentGlobalAccess {
             generic: RefCell::borrow(generic),
@@ -81,9 +87,9 @@ impl<'a> SystemData<'a> {
     /// Mutably borrows the component.
     /// Panics if the component is already borrowed.
     pub fn component_mut<C: Component>(
-        &mut self,
+        &self,
     ) -> ComponentGlobalAccess<C, RefMut<GenericComponentGlobalAccess<'a>>, &mut ()> {
-        let generic = self.get_or_create_component(TypeId::of::<C>());
+        let generic = unsafe { self.get_or_create_component(TypeId::of::<C>()) };
         let generic = RefCell::borrow_mut(generic);
 
         if !generic.mutable {
@@ -100,11 +106,11 @@ impl<'a> SystemData<'a> {
 
 #[cfg(feature = "rayon")]
 mod parallel {
+    use crate::system::ComponentMutability;
+    use crate::{HashMap, System};
     use std::any::TypeId;
     use std::collections::hash_map;
     use std::mem;
-    use crate::{HashMap, System};
-    use crate::system::ComponentMutability;
 
     #[derive(Debug)]
     pub struct ParallelSystems {
@@ -209,7 +215,8 @@ mod parallel {
                         continue;
                     }
 
-                    let conflicting = systems_do_conflict(&sys.all_components, &sys2.all_components);
+                    let conflicting =
+                        systems_do_conflict(&sys.all_components, &sys2.all_components);
 
                     if !conflicting {
                         moves.push(j);
@@ -264,12 +271,17 @@ impl EntityStorage {
         let global_components = system
             .components
             .iter()
-            .map(|(&ty, mutable)| (ty, RefCell::new(self.global_component_by_id(ty, mutable.0))))
+            .map(|(&ty, mutable)| {
+                (
+                    ty,
+                    Box::pin(RefCell::new(self.global_component_by_id(ty, mutable.0))),
+                )
+            })
             .collect();
 
         SystemData {
             entities: self.entities(),
-            global_components,
+            global_components: UnsafeCell::new(global_components),
         }
     }
 
@@ -278,7 +290,7 @@ impl EntityStorage {
     ///
     /// # Example
     /// ```
-    /// use entity_data::{EntityId, EntityStorage, SystemHandler};
+    /// use entity_data::{EntityId, EntityStorage, System, SystemHandler};
     /// use entity_data::system::SystemData;
     /// use macros::Archetype;
     ///
@@ -300,15 +312,18 @@ impl EntityStorage {
     /// struct PositionsPrintSystem {}
     ///
     /// impl SystemHandler for PositionsPrintSystem {
-    ///     fn run(&mut self, mut data: SystemData) {
+    ///     fn run(&mut self, data: SystemData) {
     ///         let positions = data.component::<Position>();
     ///         for pos in positions {
     ///             println!("{:?}", pos);
     ///         }
     ///     }
     /// }
+    ///
+    /// let mut sys = PositionsPrintSystem {};
+    /// storage.dispatch(&mut [System::new(&mut sys).with::<Position>()]);
     /// ```
-    pub fn dispatch(&self, systems: &mut [&mut System]) {
+    pub fn dispatch(&self, systems: &mut [System]) {
         for sys in systems {
             let data = unsafe { self.get_system_data(sys) };
             sys.handler.run(data);
@@ -367,36 +382,29 @@ fn test_optimization() {
     //  S2       -  *  -  -  *
     //  (S3,S0)  *  *  -  *  -
 
-    let test_sys = TestSystem {};
-    let c0 = (TypeId::of::<i8>(), ComponentMutability(true));
-    let c1 = (TypeId::of::<i16>(), ComponentMutability(true));
-    let c2 = (TypeId::of::<i32>(), ComponentMutability(true));
-    let c3 = (TypeId::of::<i64>(), ComponentMutability(true));
-    let c4 = (TypeId::of::<u64>(), ComponentMutability(true));
+    let mut test_sys0 = TestSystem {};
+    let mut test_sys1 = TestSystem {};
+    let mut test_sys2 = TestSystem {};
+    let mut test_sys3 = TestSystem {};
+    let mut test_sys4 = TestSystem {};
 
-    let sys0 = System {
-        handler: Box::new(test_sys),
-        components: [c1].into_iter().collect(),
-    };
-    let sys1 = System {
-        handler: Box::new(test_sys),
-        components: [c2, c3].into_iter().collect(),
-    };
-    let sys2 = System {
-        handler: Box::new(test_sys),
-        components: [c1, c4].into_iter().collect(),
-    };
-    let sys3 = System {
-        handler: Box::new(test_sys),
-        components: [c0, c3].into_iter().collect(),
-    };
-    let sys4 = System {
-        handler: Box::new(test_sys),
-        components: [c0, c1, c4].into_iter().collect(),
-    };
+    let sys0 = System::new(&mut test_sys0).with_mut::<i16>();
+    let sys1 = System::new(&mut test_sys1)
+        .with_mut::<i32>()
+        .with_mut::<i64>();
+    let sys2 = System::new(&mut test_sys2)
+        .with_mut::<i16>()
+        .with_mut::<u64>();
+    let sys3 = System::new(&mut test_sys3)
+        .with_mut::<i8>()
+        .with_mut::<i64>();
+    let sys4 = System::new(&mut test_sys4)
+        .with_mut::<i8>()
+        .with_mut::<i16>()
+        .with_mut::<u64>();
 
-    let systems = [sys0, sys1, sys2, sys3, sys4];
-    let parallel_runs = parallel::partition_parallel_systems(&systems);
+    let mut systems = [sys0, sys1, sys2, sys3, sys4];
+    let parallel_runs = parallel::partition_parallel_systems(&mut systems);
 
     assert_eq!(systems.len(), 5);
     assert_eq!(parallel_runs.len(), 3);
@@ -420,7 +428,10 @@ fn test_optimization() {
                 if i == j {
                     return false;
                 }
-                parallel::systems_do_conflict(&systems[*sys0_id].components, &systems[*sys1_id].components)
+                parallel::systems_do_conflict(
+                    &systems[*sys0_id].components,
+                    &systems[*sys1_id].components,
+                )
             })
         });
 
@@ -441,7 +452,7 @@ fn test_system_data_access() {
     }
 
     impl SystemHandler for TestSystem {
-        fn run(&mut self, mut data: SystemData) {
+        fn run(&mut self, data: SystemData) {
             let mut comp = data.component_mut::<i16>();
 
             let e_comp = comp.get_mut(self.entity).unwrap();
@@ -455,15 +466,15 @@ fn test_system_data_access() {
     let entity = storage.add_entity(Arch { comp: 123 });
     storage.component::<u16>().get(entity);
 
-    let test_sys = TestSystem { entity };
+    let mut test_sys = TestSystem { entity };
     let c1 = (TypeId::of::<i16>(), ComponentMutability(true));
 
-    let mut sys0 = System {
-        handler: Box::new(test_sys),
+    let sys0 = System {
+        handler: Box::new(&mut test_sys),
         components: [c1].into_iter().collect(),
     };
 
-    storage.dispatch(&mut [&mut sys0]);
+    storage.dispatch(&mut [sys0]);
 
     assert_eq!(*storage.get::<i16>(&entity).unwrap(), 321);
 }
