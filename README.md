@@ -43,7 +43,6 @@ Simple usage:
 ```rust
 use entity_data::{EntityStorage, Archetype};
 
-#[derive(Clone)]
 struct Barks {
     bark_sound: String,
 }
@@ -54,7 +53,6 @@ impl Barks {
     }
 }
 
-#[derive(Clone)]
 struct Eats {
     favorite_food: String,
     eaten_food: Vec<String>,
@@ -66,20 +64,19 @@ impl Eats {
     }
 }
 
-#[derive(Clone)]
 struct Animal {
     weight: f32,
     habitat: String,
 }
 
-#[derive(Clone, Archetype)]
+#[derive(Archetype)]
 struct Dog {
     animal: Animal,
     barks: Barks,
     eats: Eats,
 }
 
-#[derive(Clone, Archetype)]
+#[derive(Archetype)]
 struct Bird(Animal, Eats);
 
 fn main() {
@@ -114,16 +111,16 @@ use entity_data::{EntityId, EntityStorage, System, SystemHandler};
 use entity_data::system::SystemData;
 use macros::Archetype;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 struct Position {
     x: f32,
     y: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct Name(String);
 
-#[derive(Clone, Archetype)]
+#[derive(Archetype)]
 struct Dog {
     pos: Position,
     name: Name,

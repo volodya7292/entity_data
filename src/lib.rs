@@ -24,7 +24,6 @@
 //! ```
 //! use entity_data::{EntityStorage, Archetype};
 //!
-//! #[derive(Clone)]
 //! struct Barks {
 //!     bark_sound: String,
 //! }
@@ -35,7 +34,6 @@
 //!     }
 //! }
 //!
-//! #[derive(Clone)]
 //! struct Eats {
 //!     favorite_food: String,
 //!     eaten_food: Vec<String>,
@@ -47,32 +45,31 @@
 //!     }
 //! }
 //!
-//! #[derive(Clone)]
 //! struct Animal {
 //!     weight: f32,
 //!     habitat: String,
 //! }
 //!
-//! #[derive(Clone, Archetype)]
+//! #[derive(Archetype)]
 //! struct Dog {
 //!     animal: Animal,
 //!     barks: Barks,
 //!     eats: Eats,
 //! }
 //!
-//! #[derive(Clone, Archetype)]
+//! #[derive(Archetype)]
 //! struct Bird(Animal, Eats);
 //!
 //! fn main() {
 //!     let mut storage = EntityStorage::new();
 //!
-//!     let super_dog = storage.add_entity(Dog {
+//!     let super_dog = storage.add(Dog {
 //!         animal: Animal { weight: 30.0, habitat: "forest".to_string(), },
 //!         barks: Barks { bark_sound: "bark.ogg".to_string(), },
 //!         eats: Eats { favorite_food: "meat".to_string(), eaten_food: vec![] },
 //!     });
 //!
-//!     let hummingbird = storage.add_entity(Bird(
+//!     let hummingbird = storage.add(Bird(
 //!         Animal { weight: 5.0, habitat: "gardens".to_string()},
 //!         Eats { favorite_food: "apples".to_string(), eaten_food: vec![] }
 //!     ));
@@ -95,16 +92,16 @@
 //! use entity_data::system::SystemData;
 //! use macros::Archetype;
 //!
-//! #[derive(Default, Debug, Clone)]
+//! #[derive(Default, Debug)]
 //! struct Position {
 //!     x: f32,
 //!     y: f32,
 //! }
 //!
-//! #[derive(Debug, Clone)]
+//! #[derive(Debug)]
 //! struct Name(String);
 //!
-//! #[derive(Clone, Archetype)]
+//! #[derive(Archetype)]
 //! struct Dog {
 //!     pos: Position,
 //!     name: Name,
@@ -120,11 +117,11 @@
 //! fn main() {
 //!     let mut storage = EntityStorage::new();
 //!
-//!     let dog0 = storage.add_entity(Dog {
+//!     let dog0 = storage.add(Dog {
 //!         pos: Default::default(),
 //!         name: Name("Bobby".to_owned())
 //!     });
-//!     let dog1 = storage.add_entity(Dog {
+//!     let dog1 = storage.add(Dog {
 //!         pos: Position { x: 3.0, y: 5.0 },
 //!         name: Name("Jet".to_owned())
 //!     });

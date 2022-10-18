@@ -14,7 +14,7 @@ license-file = "LICENSE.md"
 members = ["macros"]
 
 [dependencies]
-macros = { package = "entity_data-macros", path = "macros", version = "1.3" }
+macros = { package = "entity_data-macros", path = "macros", version = "1.4" }
 ahash = "0.8"
 bitvec = "1.0"
 memoffset = "0.6"

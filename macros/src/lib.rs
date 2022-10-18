@@ -93,19 +93,16 @@ pub fn derive_archetype_fn(input: TokenStream) -> TokenStream {
                     component_type_ids: || #main_crate::private::smallvec![#field_types],
                     component_infos: || #main_crate::private::smallvec![#fields],
                     needs_drop: ::std::mem::needs_drop::<Self>(),
-                    clone_func: |p: *const u8| {
-                        let size = ::std::mem::size_of::<Self>();
-                        let mut data = ::std::vec::Vec::<u8>::with_capacity(size);
-                        unsafe {
-                            let curr = &*(p as *const Self);
-                            let dst_ptr = (data.as_mut_ptr() as *mut Self);
-                            dst_ptr.write(Self::clone(curr));
-                            data.set_len(size);
-                        }
-                        data
-                    },
                     drop_func: |p: *mut u8| unsafe { ::std::ptr::drop_in_place(p as *mut Self) },
                 }
+            }
+
+            fn as_any(&self) -> &dyn ::std::any::Any {
+                self
+            }
+
+            fn as_any_mut(&mut self) -> &mut dyn ::std::any::Any {
+                self
             }
         }
     }

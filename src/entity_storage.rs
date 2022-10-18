@@ -11,6 +11,7 @@ use std::any::TypeId;
 use std::collections::hash_map;
 
 /// A container of entities.
+#[derive(Default)]
 pub struct EntityStorage {
     pub(crate) archetypes: Vec<ArchetypeStorage>,
     pub(crate) archetypes_by_types: HashMap<TypeId, usize>,
@@ -64,10 +65,7 @@ impl EntityStorage {
     }
 
     /// Creates a new entity and returns its identifier.
-    pub fn add_entity<S>(&mut self, state: S) -> EntityId
-    where
-        S: ArchetypeState,
-    {
+    pub fn add<S: ArchetypeState>(&mut self, state: S) -> EntityId {
         let arch_id = self.get_or_create_archetype::<S>(&state);
 
         // Safety: archetype at `arch_id` exists because it is created above if not present.

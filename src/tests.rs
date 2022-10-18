@@ -1,8 +1,8 @@
 use crate::StaticArchetype;
 use crate::{Archetype, EntityStorage};
+use ahash::HashSet;
 use rand::Rng;
 use std::convert::TryInto;
-use ahash::HashSet;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Comp1 {
@@ -42,6 +42,9 @@ impl Comp2 {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+struct Comp3;
+
 #[derive(Clone, Archetype)]
 struct Archetype12 {
     comp1: Comp1,
@@ -56,6 +59,9 @@ struct Archetype1 {
 #[derive(Clone, Archetype)]
 struct Archetype2(Comp2);
 
+#[derive(Clone, Archetype)]
+struct Archetype3(Comp3);
+
 #[test]
 fn general() {
     let mut storage = EntityStorage::new();
@@ -65,19 +71,26 @@ fn general() {
     let e1v = Comp1::new();
     let e2v = Comp2::new();
 
-    let _e0 = storage.add_entity(Archetype12 {
+    let _e0 = storage.add(Archetype12 {
         comp1: e00v.clone(),
         comp2: e01v.clone(),
     });
 
-    let e0 = storage.add_entity(Archetype12 {
-        comp1: e00v.clone(),
-        comp2: e01v.clone(),
-    });
-    let _e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
-    let e1 = storage.add_entity(Archetype1 { comp1: e1v.clone() });
-    let _e2 = storage.add_entity(Archetype2(e2v.clone()));
-    let e2 = storage.add_entity(Archetype2(e2v.clone()).into_any().clone());
+    let e0 = storage.add(
+        Archetype12 {
+            comp1: e00v.clone(),
+            comp2: e01v.clone(),
+        }
+        .into_any(),
+    );
+
+    let temp = storage.add(Archetype3(Comp3).into_any());
+    storage.remove(&temp);
+
+    let _e1 = storage.add(Archetype1 { comp1: e1v.clone() });
+    let e1 = storage.add(Archetype1 { comp1: e1v.clone() });
+    let _e2 = storage.add(Archetype2(e2v.clone()));
+    let e2 = storage.add(Archetype2(e2v.clone()).into_any());
 
     assert_eq!(storage.count_entities(), 6);
 
@@ -122,7 +135,7 @@ fn general() {
 fn add_modify_remove_add() {
     let mut storage = EntityStorage::new();
 
-    let e = storage.add_entity(Archetype1 {
+    let e = storage.add(Archetype1 {
         comp1: Comp1 {
             a: 123,
             b: Default::default(),
@@ -132,7 +145,7 @@ fn add_modify_remove_add() {
     storage.get_mut::<Comp1>(&e).unwrap().a = 230;
     storage.remove(&e);
 
-    let e2 = storage.add_entity(Archetype1 {
+    let e2 = storage.add(Archetype1 {
         comp1: Comp1 {
             a: 123,
             b: Default::default(),

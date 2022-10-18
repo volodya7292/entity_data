@@ -13,6 +13,12 @@ pub trait SystemHandler: Send + Sync {
     fn run(&mut self, data: SystemData);
 }
 
+impl<F: FnMut(SystemData) + Send + Sync> SystemHandler for F {
+    fn run(&mut self, data: SystemData) {
+        self(data);
+    }
+}
+
 /// A system context.
 pub struct System<'a> {
     handler: Box<&'a mut (dyn SystemHandler + 'a)>,
@@ -294,20 +300,20 @@ impl EntityStorage {
     /// use entity_data::system::SystemData;
     /// use macros::Archetype;
     ///
-    /// #[derive(Default, Debug, Clone)]
+    /// #[derive(Default, Debug)]
     /// struct Position {
     ///     x: f32,
     ///     y: f32,
     /// }
     ///
-    /// #[derive(Clone, Archetype)]
+    /// #[derive(Archetype)]
     /// struct Dog {
     ///     pos: Position,
     /// }
     ///
     /// let mut storage = EntityStorage::new();
-    /// let dog0 = storage.add_entity(Dog { pos: Default::default() });
-    /// let dog1 = storage.add_entity(Dog { pos: Position { x: 3.0, y: 5.0 } });
+    /// let dog0 = storage.add(Dog { pos: Default::default() });
+    /// let dog1 = storage.add(Dog { pos: Position { x: 3.0, y: 5.0 } });
     ///
     /// struct PositionsPrintSystem {}
     ///
@@ -463,7 +469,7 @@ fn test_system_data_access() {
 
     let mut storage = EntityStorage::new();
 
-    let entity = storage.add_entity(Arch { comp: 123 });
+    let entity = storage.add(Arch { comp: 123 });
     storage.component::<u16>().get(entity);
 
     let mut test_sys = TestSystem { entity };

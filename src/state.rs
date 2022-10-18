@@ -1,7 +1,7 @@
 use crate::private::ArchetypeMetadata;
+use std::alloc;
 use std::any::{Any, TypeId};
-use std::mem::MaybeUninit;
-use std::{mem, ptr};
+use std::ops::Deref;
 
 /// Defines archetype objects (entity states) with definite components.
 pub trait ArchetypeState: Send + Sync + 'static {
@@ -9,74 +9,42 @@ pub trait ArchetypeState: Send + Sync + 'static {
     fn as_ptr(&self) -> *const u8;
     fn forget(self);
     fn metadata(&self) -> fn() -> ArchetypeMetadata;
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Defines archetype objects (entity states).
-pub trait StaticArchetype: ArchetypeState {
+pub trait StaticArchetype: Sized + ArchetypeState {
     const N_COMPONENTS: usize;
 
-    fn into_any(self) -> AnyState
-    where
-        Self: Sized + 'static,
-    {
-        let ty = self.type_id();
-        let size = mem::size_of::<Self>();
-        let metadata = self.metadata();
-
-        let mut data = Vec::<u8>::with_capacity(size);
-        unsafe {
-            ptr::write(data.as_mut_ptr() as *mut Self, self);
-            data.set_len(size);
-        }
-
-        AnyState { ty, data, metadata }
+    fn into_any(self) -> AnyState {
+        AnyState(Box::new(self))
     }
 }
+
+pub struct AnyState(Box<dyn ArchetypeState>);
 
 /// Entity state with arbitrary components.
-pub struct AnyState {
-    pub(crate) ty: TypeId,
-    pub(crate) data: Vec<u8>,
-    pub(crate) metadata: fn() -> ArchetypeMetadata,
-}
-
 impl AnyState {
-    /// Converts the state into definite with static type.
-    pub fn into_static<S: StaticArchetype>(mut self) -> Option<S> {
-        if TypeId::of::<S>() != self.ty {
-            return None;
+    /// Returns `&dyn` reference to the contained state.
+    pub fn downcast_ref<T: ArchetypeState>(&self) -> Option<&T> {
+        self.0.as_any().downcast_ref()
+    }
+
+    /// Returns `&mut dyn` reference to the contained state.
+    pub fn downcast_mut<T: ArchetypeState>(&mut self) -> Option<&mut T> {
+        self.0.as_any_mut().downcast_mut()
+    }
+
+    /// Returns the contained state.
+    pub fn downcast<T: ArchetypeState>(self) -> Option<T> {
+        if let Some(val) = self.downcast_ref::<T>() {
+            let val = unsafe { (val as *const T).read() };
+            self.forget();
+            Some(val)
+        } else {
+            None
         }
-
-        let mut result = MaybeUninit::<S>::uninit();
-
-        unsafe {
-            let src_ptr = self.data.as_ptr() as *const S;
-            src_ptr.copy_to_nonoverlapping(result.as_mut_ptr(), mem::size_of::<S>());
-
-            (&mut self.data as *mut Vec<_>).drop_in_place();
-            mem::forget(self);
-
-            Some(result.assume_init())
-        }
-    }
-}
-
-impl ArchetypeState for AnyState {
-    fn ty(&self) -> TypeId {
-        self.ty
-    }
-
-    fn as_ptr(&self) -> *const u8 {
-        self.data.as_ptr()
-    }
-
-    fn forget(mut self) {
-        unsafe { (&mut self.data as *mut Vec<_>).drop_in_place() };
-        mem::forget(self);
-    }
-
-    fn metadata(&self) -> fn() -> ArchetypeMetadata {
-        self.metadata
     }
 }
 
@@ -86,19 +54,38 @@ impl<T: StaticArchetype> From<T> for AnyState {
     }
 }
 
-impl Clone for AnyState {
-    fn clone(&self) -> Self {
-        let data = (self.metadata()().clone_func)(self.data.as_ptr());
-        Self {
-            ty: self.ty,
-            data,
-            metadata: self.metadata,
+impl ArchetypeState for AnyState {
+    fn ty(&self) -> TypeId {
+        self.0.ty()
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self.0.as_ptr()
+    }
+
+    fn forget(self) {
+        let val: &dyn ArchetypeState = self.0.deref();
+        let layout = alloc::Layout::for_value(val);
+        let ptr = Box::into_raw(self.0);
+
+        // Deallocate `Box` without dropping the state itself.
+        if layout.size() != 0 {
+            unsafe {
+                assert!(!ptr.is_null());
+                alloc::dealloc(ptr as *mut u8, layout);
+            };
         }
     }
-}
 
-impl Drop for AnyState {
-    fn drop(&mut self) {
-        (self.metadata()().drop_func)(self.data.as_mut_ptr());
+    fn metadata(&self) -> fn() -> ArchetypeMetadata {
+        self.0.metadata()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self.0.as_any()
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self.0.as_any_mut()
     }
 }
