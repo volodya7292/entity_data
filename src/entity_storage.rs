@@ -1,10 +1,7 @@
-pub mod component;
-
 use crate::archetype::component::Component;
 use crate::archetype::entities::EntitiesIter;
 use crate::archetype::{ArchetypeLayout, ArchetypeStorage};
 use crate::entity::ArchetypeId;
-use crate::entity_storage::component::{ComponentGlobalAccess, GenericComponentGlobalAccess};
 use crate::{ArchetypeState, StaticArchetype};
 use crate::{EntityId, HashMap};
 use std::any::TypeId;
@@ -152,55 +149,11 @@ impl EntityStorage {
         self.entities().count()
     }
 
-    /// Returns global access to all archetypes with component `C`.
-    pub fn component<C: Component>(
-        &self,
-    ) -> ComponentGlobalAccess<C, GenericComponentGlobalAccess<'_>, &()> {
-        let generic = unsafe { self.global_component_by_id(TypeId::of::<C>(), false) };
-
-        ComponentGlobalAccess {
-            generic,
-            _ty: Default::default(),
-            _mutability: Default::default(),
-        }
-    }
-
-    /// Returns mutable global access to all archetypes with component `C`.
-    pub fn component_mut<C: Component>(
-        &mut self,
-    ) -> ComponentGlobalAccess<C, GenericComponentGlobalAccess<'_>, &mut ()> {
-        let generic = unsafe { self.global_component_by_id(TypeId::of::<C>(), true) };
-
-        ComponentGlobalAccess {
-            generic,
-            _ty: Default::default(),
-            _mutability: Default::default(),
-        }
-    }
-
-    /// Safety: mutable borrow must be unique.
-    pub(crate) unsafe fn global_component_by_id(
-        &self,
-        ty: TypeId,
-        mutable: bool,
-    ) -> GenericComponentGlobalAccess {
-        let archetype_ids: &[usize] = self
-            .component_to_archetypes_map
-            .get(&ty)
-            .map_or(&[], |v| v.as_slice());
-
-        GenericComponentGlobalAccess {
-            filtered_archetype_ids: archetype_ids,
-            all_archetypes: &self.archetypes,
-            all_entities: self.entities(),
-            mutable,
-        }
-    }
 }
 
 #[derive(Copy, Clone)]
 pub struct AllEntities<'a> {
-    pub(crate) archetypes: &'a Vec<ArchetypeStorage>,
+    pub(crate) archetypes: &'a [ArchetypeStorage],
 }
 
 impl AllEntities<'_> {

@@ -1,8 +1,7 @@
-use crate::StaticArchetype;
 use crate::{Archetype, EntityStorage};
+use crate::{StaticArchetype, System, SystemAccess};
 use ahash::HashSet;
 use rand::Rng;
-use std::convert::TryInto;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct Comp1 {
@@ -104,12 +103,36 @@ fn general() {
     assert_eq!(&e1v, v1);
     assert_eq!(&e2v, v2);
 
-    let all_comp1: Vec<_> = storage.component::<Comp1>().iter().cloned().collect();
-    let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
+    {
+        let access = storage.access();
 
-    assert_eq!(all_comp1.len(), 4);
-    assert!(all_comp1_set.contains(&e00v));
-    assert!(all_comp1_set.contains(&e1v));
+        let all_comp1: Vec<_> = access.component::<Comp1>().iter().cloned().collect();
+        let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
+
+        assert_eq!(all_comp1.len(), 4);
+        assert!(all_comp1_set.contains(&e00v));
+        assert!(all_comp1_set.contains(&e1v));
+    }
+
+    storage.dispatch(&mut [System::new(&mut |mut access: SystemAccess| {
+        let mut c = 0;
+
+        for v in crate::iter_set!(access, Comp1, mut Comp2) {
+            let (_comp1, _comp2): (&Comp1, &mut Comp2) = v;
+            c += 1;
+        }
+
+        assert_eq!(c, 2);
+
+        let all_comp1: Vec<_> = access.component::<Comp1>().iter().cloned().collect();
+        let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
+
+        assert_eq!(all_comp1.len(), 4);
+        assert!(all_comp1_set.contains(&e00v));
+        assert!(all_comp1_set.contains(&e1v));
+    })
+    .with::<Comp1>()
+    .with_mut::<Comp2>()]);
 
     storage.remove(&_e0);
     storage.remove(&_e1);

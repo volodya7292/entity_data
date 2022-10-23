@@ -89,7 +89,7 @@
 //!
 //! ```
 //! use entity_data::{EntityId, EntityStorage, System, SystemHandler};
-//! use entity_data::system::SystemData;
+//! use entity_data::system::SystemAccess;
 //! use macros::Archetype;
 //!
 //! #[derive(Default, Debug)]
@@ -114,6 +114,25 @@
 //!     result: String
 //! }
 //!
+//! impl SystemHandler for PositionsPrintSystem {
+//!     fn run(&mut self, data: SystemAccess) {
+//!         let positions = data.component::<Position>();
+//!         let names = data.component::<Name>();
+//!         for (pos, name) in positions.iter().zip(names) {
+//!             println!("{:?} - {:?}", pos, name);
+//!         }
+//!     }
+//! }
+//!
+//! impl SystemHandler for ConcatAllNamesSystem {
+//!     fn run(&mut self, data: SystemAccess) {
+//!         let names = data.component::<Name>();
+//!         for name in names {
+//!             self.result += &name.0;
+//!         }
+//!     }
+//! }
+//!
 //! fn main() {
 //!     let mut storage = EntityStorage::new();
 //!
@@ -125,26 +144,6 @@
 //!         pos: Position { x: 3.0, y: 5.0 },
 //!         name: Name("Jet".to_owned())
 //!     });
-//!
-//!
-//!     impl SystemHandler for PositionsPrintSystem {
-//!         fn run(&mut self, data: SystemData) {
-//!             let positions = data.component::<Position>();
-//!             let names = data.component::<Name>();
-//!             for (pos, name) in positions.iter().zip(names) {
-//!                 println!("{:?} - {:?}", pos, name);
-//!             }
-//!         }
-//!     }
-//!
-//!     impl SystemHandler for ConcatAllNamesSystem {
-//!         fn run(&mut self, data: SystemData) {
-//!             let names = data.component::<Name>();
-//!             for name in names {
-//!                 self.result += &name.0;
-//!             }
-//!         }
-//!     }
 //!
 //!     let mut positions_print_system = PositionsPrintSystem {};
 //!     let mut concat_names_system = ConcatAllNamesSystem::default();
@@ -158,7 +157,7 @@
 //!     storage.dispatch(&mut [sys0, sys1]);
 //!
 //!     println!("{}", concat_names_system.result);
-//! }
+//!}
 //! ```
 
 #[cfg(test)]
@@ -175,17 +174,21 @@ pub use archetype::component::Component;
 pub use archetype::entities::ArchetypeEntities;
 pub use archetype::ArchetypeStorage;
 pub use entity::EntityId;
-pub use entity_storage::component::ComponentGlobalAccess;
-pub use entity_storage::component::ComponentGlobalIter;
-pub use entity_storage::component::ComponentGlobalIterMut;
 pub use entity_storage::EntityStorage;
+pub use macros::iter_set;
 pub use macros::Archetype;
 pub use state::AnyState;
 pub use state::ArchetypeState;
 pub use state::StaticArchetype;
+pub use system::component::GlobalComponentAccess;
+pub use system::component::GlobalComponentIter;
+pub use system::component::GlobalComponentIterMut;
+pub use system::ComponentSetAccess;
 pub use system::System;
+pub use system::SystemAccess;
 pub use system::SystemHandler;
 
+pub(crate) type HashSet<T> = ahash::AHashSet<T>;
 pub(crate) type HashMap<K, V> = ahash::AHashMap<K, V>;
 
 extern crate self as entity_data;

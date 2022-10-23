@@ -1,4 +1,5 @@
 use crate::private::ArchetypeMetadata;
+use smallvec::SmallVec;
 use std::alloc;
 use std::any::{Any, TypeId};
 use std::ops::Deref;
@@ -11,11 +12,18 @@ pub trait ArchetypeState: Send + Sync + 'static {
     fn metadata(&self) -> fn() -> ArchetypeMetadata;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn component_ids(&self) -> SmallVec<[TypeId; 32]> {
+        let meta = (self.metadata())();
+        (meta.component_type_ids)()
+    }
 }
 
 /// Defines archetype objects (entity states).
 pub trait StaticArchetype: Sized + ArchetypeState {
     const N_COMPONENTS: usize;
+
+    fn metadata() -> fn() -> ArchetypeMetadata;
 
     fn into_any(self) -> AnyState {
         AnyState(Box::new(self))
