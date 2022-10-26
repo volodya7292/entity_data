@@ -1,14 +1,14 @@
 use crate::archetype::component;
 use crate::archetype::component::ComponentStorageRef;
+use crate::entity_storage::AllEntities;
 use crate::{ArchetypeStorage, Component, EntityId};
 use std::borrow::Borrow;
 use std::cell::{Ref, RefMut};
 use std::marker::PhantomData;
-use std::mem::{ManuallyDrop};
+use std::mem::ManuallyDrop;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::slice;
-use crate::entity_storage::AllEntities;
 
 pub(crate) type CompMutability = bool;
 
@@ -163,6 +163,15 @@ pub struct GenericComponentGlobalAccess<'a> {
     pub(crate) mutable: bool,
 }
 
+impl GenericComponentGlobalAccess<'_> {
+    fn count_entities(&self) -> usize {
+        self.filtered_archetype_ids
+            .iter()
+            .map(|v| self.all_archetypes[*v].entities.count())
+            .sum::<usize>()
+    }
+}
+
 pub struct GlobalComponentAccess<C, G, M> {
     pub(crate) generic: G,
     pub(crate) _ty: PhantomData<C>,
@@ -170,12 +179,16 @@ pub struct GlobalComponentAccess<C, G, M> {
 }
 
 impl<'a, C: Component> GlobalComponentAccess<C, Ref<'a, GenericComponentGlobalAccess<'a>>, &()> {
-    pub fn contains(&self, entity_id: EntityId) -> bool {
+    pub fn contains(&self, entity_id: &EntityId) -> bool {
         self.generic.all_entities.contains(entity_id)
     }
 
-    pub fn get(&self, entity_id: EntityId) -> Option<&'a C> {
+    pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
+    }
+
+    pub fn count_entities(&self) -> usize {
+        self.generic.count_entities()
     }
 
     pub fn iter<'b: 'a>(&self) -> GlobalComponentIter<'a, 'b, C> {
@@ -203,18 +216,22 @@ impl<'a, 'b: 'a, C: Component + 'a> IntoIterator
 impl<'a, 'b, C: Component>
     GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &()>
 {
-    pub fn contains(&self, entity_id: EntityId) -> bool {
+    pub fn contains(&self, entity_id: &EntityId) -> bool {
         self.generic.all_entities.contains(entity_id)
     }
 
-    pub fn get(&self, entity_id: EntityId) -> Option<&'a C> {
+    pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
     }
 
-    pub fn get_mut(&mut self, entity_id: EntityId) -> Option<&'a mut C> {
+    pub fn get_mut(&mut self, entity_id: &EntityId) -> Option<&'a mut C> {
         let comp = self.generic.all_archetypes[entity_id.archetype_id as usize].component::<C>()?;
         comp.contains(entity_id.id)
             .then(|| unsafe { comp.get_mut_unsafe(entity_id.id) })
+    }
+
+    pub fn count_entities(&self) -> usize {
+        self.generic.count_entities()
     }
 
     pub fn iter<'c>(

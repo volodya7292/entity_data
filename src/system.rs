@@ -2,7 +2,10 @@ pub(crate) mod component;
 
 use crate::entity::ArchetypeId;
 use crate::entity_storage::AllEntities;
-use crate::system::component::{CompMutability, ComponentGlobalIterInner, ComponentGlobalIterMutInner, GenericComponentGlobalAccess, GlobalComponentAccess, OwningRef};
+use crate::system::component::{
+    CompMutability, ComponentGlobalIterInner, ComponentGlobalIterMutInner,
+    GenericComponentGlobalAccess, GlobalComponentAccess, OwningRef,
+};
 use crate::{
     archetype, ArchetypeStorage, Component, EntityId, EntityStorage, GlobalComponentIter,
     GlobalComponentIterMut, HashMap, HashSet,
@@ -588,17 +591,19 @@ impl EntityStorage {
     /// let mut sys = PositionsPrintSystem {};
     /// storage.dispatch(&mut [System::new(&mut sys).with::<Position>()]);
     /// ```
-    pub fn dispatch(&self, systems: &mut [System]) {
-        for sys in systems {
+    pub fn dispatch<'a>(&self, mut systems: impl AsMut<[System<'a>]>) {
+        for sys in systems.as_mut() {
             let data = unsafe { self.get_system_data(&sys.components) };
             sys.handler.run(data);
         }
     }
 
     /// Dispatches systems in parallel if possible. Two systems won't execute in parallel if they
-    /// access the same component and one of them mutates this component.
+    /// access the same component and one of the systems mutates this component.
     #[cfg(feature = "rayon")]
-    pub fn dispatch_par(&self, systems: &mut [System]) {
+    pub fn dispatch_par<'a>(&self, mut systems: impl AsMut<[System<'a>]>) {
+        let systems = systems.as_mut();
+
         if systems.is_empty() {
             return;
         }
@@ -720,7 +725,7 @@ fn test_system_data_access() {
         fn run(&mut self, data: SystemAccess) {
             let mut comp = data.component_mut::<i16>();
 
-            let e_comp = comp.get_mut(self.entity).unwrap();
+            let e_comp = comp.get_mut(&self.entity).unwrap();
             assert_eq!(*e_comp, 123);
             *e_comp = 321;
         }

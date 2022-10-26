@@ -223,9 +223,9 @@ pub fn iter_set(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let comp_name = Ident::new(&format!("comp{}", i), Span::call_site());
 
             if mutable.is_some() {
-                quote!(let #comp_name = unsafe { #storage_name.get_mut(entity).unwrap_unchecked() };)
+                quote!(let #comp_name = unsafe { #storage_name.get_mut(&entity).unwrap_unchecked() };)
             } else {
-                quote!(let #comp_name = unsafe { #storage_name.get(entity).unwrap_unchecked() };)
+                quote!(let #comp_name = unsafe { #storage_name.get(&entity).unwrap_unchecked() };)
             }
         })
         .flatten()

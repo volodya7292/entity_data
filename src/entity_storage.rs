@@ -108,7 +108,7 @@ impl EntityStorage {
     }
 
     /// Returns `true` if the storage contains the specified entity.
-    pub fn contains(&self, entity: EntityId) -> bool {
+    pub fn contains(&self, entity: &EntityId) -> bool {
         self.entities().contains(entity)
     }
 
@@ -158,7 +158,7 @@ pub struct AllEntities<'a> {
 
 impl AllEntities<'_> {
     /// Returns `true` if the storage contains the specified entity.
-    pub fn contains(&self, entity: EntityId) -> bool {
+    pub fn contains(&self, entity: &EntityId) -> bool {
         self.archetypes
             .get(entity.archetype_id as usize)
             .map_or(false, |arch| arch.contains(entity.id))
