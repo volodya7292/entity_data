@@ -134,6 +134,8 @@ fn general() {
     .with::<Comp1>()
     .with_mut::<Comp2>()]);
 
+    assert_eq!(storage.entry(&e1).unwrap().get::<Comp1>(), Some(&e1v));
+
     storage.remove(&_e0);
     storage.remove(&_e1);
     storage.remove(&_e2);

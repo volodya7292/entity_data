@@ -2,6 +2,7 @@ use crate::archetype::component::Component;
 use crate::archetype::entities::EntitiesIter;
 use crate::archetype::{ArchetypeLayout, ArchetypeStorage};
 use crate::entity::ArchetypeId;
+use crate::entry::{Entry, EntryMut};
 use crate::{ArchetypeState, StaticArchetype};
 use crate::{EntityId, HashMap};
 use std::any::TypeId;
@@ -124,6 +125,22 @@ impl EntityStorage {
         arch.get_mut(entity.id)
     }
 
+    /// Returns an entry of `entity` in the corresponding archetype.
+    pub fn entry(&mut self, entity: &EntityId) -> Option<Entry> {
+        Some(Entry {
+            arch: self.archetypes.get(entity.archetype_id as usize)?,
+            entity: *entity,
+        })
+    }
+
+    /// Returns a mutable entry of `entity` in the corresponding archetype.
+    pub fn entry_mut(&mut self, entity: &EntityId) -> Option<EntryMut> {
+        Some(EntryMut {
+            arch: self.archetypes.get_mut(entity.archetype_id as usize)?,
+            entity: *entity,
+        })
+    }
+
     /// Removes an entity from the storage. Returns `true` if the entity was present in the storage.
     pub fn remove(&mut self, entity: &EntityId) -> bool {
         if let Some(arch) = self.archetypes.get_mut(entity.archetype_id as usize) {
@@ -148,7 +165,6 @@ impl EntityStorage {
     pub fn count_entities(&self) -> usize {
         self.entities().count()
     }
-
 }
 
 #[derive(Copy, Clone)]

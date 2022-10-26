@@ -55,7 +55,7 @@ impl<R, U> Drop for OwningRef<R, U> {
     }
 }
 
-pub struct ComponentGlobalIterInner<'a, C> {
+pub(crate) struct ComponentGlobalIterInner<'a, C> {
     filtered_archetypes_iter: slice::Iter<'a, usize>,
     all_archetypes: &'a [ArchetypeStorage],
     curr_iter: component::Iter<'a, C, ComponentStorageRef<'a, C>>,
@@ -102,10 +102,10 @@ impl<'a, 'b: 'a, C: Component> Iterator for GlobalComponentIter<'a, 'b, C> {
     }
 }
 
-pub struct ComponentGlobalIterMutInner<'a, C> {
-    pub(crate) filtered_archetypes_iter: slice::Iter<'a, usize>,
-    pub(crate) all_archetypes: &'a [ArchetypeStorage],
-    pub(crate) curr_iter: component::IterMut<'a, C, ComponentStorageRef<'a, C>>,
+pub(crate) struct ComponentGlobalIterMutInner<'a, C> {
+    filtered_archetypes_iter: slice::Iter<'a, usize>,
+    all_archetypes: &'a [ArchetypeStorage],
+    curr_iter: component::IterMut<'a, C, ComponentStorageRef<'a, C>>,
 }
 
 impl<'a, C: Component> ComponentGlobalIterMutInner<'a, C> {
@@ -179,18 +179,22 @@ pub struct GlobalComponentAccess<C, G, M> {
 }
 
 impl<'a, C: Component> GlobalComponentAccess<C, Ref<'a, GenericComponentGlobalAccess<'a>>, &()> {
+    /// Returns `true` if the storage contains the specified entity.
     pub fn contains(&self, entity_id: &EntityId) -> bool {
         self.generic.all_entities.contains(entity_id)
     }
 
+    /// Returns a reference to the component `C` of the specified entity id.
     pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
     }
 
+    /// Returns total number of entities with the component `C`.
     pub fn count_entities(&self) -> usize {
         self.generic.count_entities()
     }
 
+    /// Returns an iterator over the components.
     pub fn iter<'b: 'a>(&self) -> GlobalComponentIter<'a, 'b, C> {
         GlobalComponentIter {
             inner: unsafe {
@@ -216,24 +220,29 @@ impl<'a, 'b: 'a, C: Component + 'a> IntoIterator
 impl<'a, 'b, C: Component>
     GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &()>
 {
+    /// Returns `true` if the storage contains the specified entity.
     pub fn contains(&self, entity_id: &EntityId) -> bool {
         self.generic.all_entities.contains(entity_id)
     }
 
+    /// Returns a reference to the component `C` of the specified entity id.
     pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
     }
 
+    /// Returns a mutable reference to the component `C` of the specified entity id.
     pub fn get_mut(&mut self, entity_id: &EntityId) -> Option<&'a mut C> {
         let comp = self.generic.all_archetypes[entity_id.archetype_id as usize].component::<C>()?;
         comp.contains(entity_id.id)
             .then(|| unsafe { comp.get_mut_unsafe(entity_id.id) })
     }
 
+    /// Returns total number of entities with the component `C`.
     pub fn count_entities(&self) -> usize {
         self.generic.count_entities()
     }
 
+    /// Returns a mutable iterator over the components.
     pub fn iter<'c>(
         &'c mut self,
     ) -> GlobalComponentIterMut<'a, 'b, 'c, &'c mut RefMut<'b, GenericComponentGlobalAccess<'a>>, C>

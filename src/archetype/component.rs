@@ -71,11 +71,14 @@ impl<'a, C: Component, D: Borrow<UnsafeVec>> ComponentStorage<'a, C, D> {
         }
     }
 
+    /// Returns a reference to the component `C` of the specified entity.
+    /// Safety: entity must exist.
     pub unsafe fn get_unchecked(&self, entity_id: ArchEntityId) -> &'a C {
         // Safety: the method does not mutate `self`
         self.get_mut_unsafe(entity_id)
     }
 
+    /// Returns a reference to component `C` of the specified entity.
     pub fn get(&self, entity_id: ArchEntityId) -> Option<&'a C> {
         if !self.contains(entity_id) {
             return None;
@@ -108,7 +111,7 @@ impl<'a, C: Component + 'a> IntoIterator for ComponentStorageRef<'a, C> {
 impl<'a, C: Component> ComponentStorageMut<'a, C> {
     /// Returns a mutable reference to the component `C` of the specified entity id.
     /// Safety: component at `entity_id` must exist.
-    pub unsafe fn get_mut_unchecked(&mut self, entity_id: ArchEntityId) -> &'a mut C {
+    pub unsafe fn get_unchecked_mut(&mut self, entity_id: ArchEntityId) -> &'a mut C {
         self.get_mut_unsafe(entity_id)
     }
 
@@ -117,7 +120,7 @@ impl<'a, C: Component> ComponentStorageMut<'a, C> {
         if !self.contains(entity_id) {
             return None;
         }
-        unsafe { Some(self.get_mut_unchecked(entity_id)) }
+        unsafe { Some(self.get_unchecked_mut(entity_id)) }
     }
 
     /// Returns an iterator over all components.
