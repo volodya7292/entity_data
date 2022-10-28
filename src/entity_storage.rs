@@ -126,7 +126,7 @@ impl EntityStorage {
     }
 
     /// Returns an entry of `entity` in the corresponding archetype.
-    pub fn entry(&mut self, entity: &EntityId) -> Option<Entry> {
+    pub fn entry(&self, entity: &EntityId) -> Option<Entry> {
         Some(Entry {
             arch: self.archetypes.get(entity.archetype_id as usize)?,
             entity: *entity,
