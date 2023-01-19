@@ -42,12 +42,12 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
             let offset = if let Some(field_ident) = &field.ident {
                 quote! {
-                    #main_crate::private::offset_of!(#ident, #field_ident)
+                    #main_crate::private::offset_of!(Self, #field_ident)
                 }
             } else {
                 let i = syn::Index::from(i);
                 quote! {
-                    #main_crate::private::offset_of!(#ident, #i)
+                    #main_crate::private::offset_of!(Self, #i)
                 }
             };
 
@@ -82,10 +82,10 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
         }
     }
 
-    let mut field_types = proc_macro2::TokenStream::new();
+    let mut field_types = TokenStream::new();
     field_types.extend(types.into_iter());
 
-    let mut fields = proc_macro2::TokenStream::new();
+    let mut fields = TokenStream::new();
     fields.extend(field_impls.into_iter());
 
     quote! {
@@ -104,7 +104,7 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
         impl #generics #main_crate::ArchetypeState for #ident #generics #where_clause {
             fn ty(&self) -> ::std::any::TypeId {
-                ::std::any::TypeId::of::<#ident>()
+                ::std::any::TypeId::of::<Self>()
             }
 
             fn as_ptr(&self) -> *const u8 {
@@ -116,7 +116,7 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
             }
 
             fn metadata(&self) -> fn() -> #main_crate::private::ArchetypeMetadata {
-                <#ident as #main_crate::StaticArchetype>::metadata()
+                <Self as #main_crate::StaticArchetype>::metadata()
             }
 
             fn as_any(&self) -> &dyn ::std::any::Any {
