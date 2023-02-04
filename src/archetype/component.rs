@@ -48,6 +48,7 @@ impl<'a, C, D: Borrow<UnsafeVec> + Copy> Clone for ComponentStorage<'a, C, D> {
 impl<'a, C, D: Borrow<UnsafeVec> + Copy> Copy for ComponentStorage<'a, C, D> {}
 
 impl<'a, C: Component, D: Borrow<UnsafeVec>> ComponentStorage<'a, C, D> {
+    /// Checks whether `self` container specific entity.
     pub fn contains(&self, entity_id: ArchEntityId) -> bool {
         self.entities.contains(entity_id)
     }

@@ -92,19 +92,19 @@ impl EntityStorage {
         unsafe { Some(self.archetypes.get_unchecked_mut(arch_id)) }
     }
 
+    /// Maps the specified `TypeId` to respective `ArchetypeId`.
+    /// If the storage doesn't contain an archetype of type `type_id`, it returns `None`.
+    pub fn type_id_to_archetype_id(&self, type_id: &TypeId) -> Option<ArchetypeId> {
+        self.archetypes_by_types.get(type_id).map(|id| *id as u32)
+    }
+
     /// Returns a reference to the specified archetype.
-    pub fn get_archetype_by_id<A: StaticArchetype>(
-        &mut self,
-        id: ArchetypeId,
-    ) -> Option<&ArchetypeStorage> {
+    pub fn get_archetype_by_id(&mut self, id: ArchetypeId) -> Option<&ArchetypeStorage> {
         self.archetypes.get(id as usize)
     }
 
     /// Returns a mutable reference to the specified archetype.
-    pub fn get_mut_archetype_by_id<A: StaticArchetype>(
-        &mut self,
-        id: ArchetypeId,
-    ) -> Option<&mut ArchetypeStorage> {
+    pub fn get_mut_archetype_by_id(&mut self, id: ArchetypeId) -> Option<&mut ArchetypeStorage> {
         self.archetypes.get_mut(id as usize)
     }
 

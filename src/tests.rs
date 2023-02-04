@@ -114,7 +114,7 @@ fn general() {
         assert!(all_comp1_set.contains(&e1v));
     }
 
-    storage.dispatch(&mut [System::new(&mut |mut access: SystemAccess| {
+    storage.dispatch(&mut [System::new(&mut |access: SystemAccess| {
         let mut c = 0;
 
         for v in crate::iter_set!(access, Comp1, mut Comp2) {

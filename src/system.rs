@@ -1,7 +1,6 @@
 pub(crate) mod component;
 
 use crate::entity::ArchetypeId;
-use crate::entity_storage::AllEntities;
 use crate::system::component::{
     CompMutability, ComponentGlobalIterInner, ComponentGlobalIterMutInner,
     GenericComponentGlobalAccess, GlobalComponentAccess, OwningRef,
@@ -14,7 +13,6 @@ use std::any::TypeId;
 use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
 use std::collections::hash_map;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::vec;
 
 pub trait SystemHandler: Send + Sync {
@@ -99,9 +97,9 @@ impl<'a, 'c> ComponentSetAccess<'a, 'c> {
         let generic = self
             .components
             .get(&TypeId::of::<C>())
-            .expect("Component not found");
+            .expect("Component must be available");
 
-        let guard = generic.try_borrow().expect("Component is mutably borrowed");
+        let guard = generic.try_borrow().expect("Component must not be mutably borrowed");
 
         GlobalComponentIter {
             inner: unsafe {
@@ -116,10 +114,10 @@ impl<'a, 'c> ComponentSetAccess<'a, 'c> {
         let generic = self
             .components
             .get(&TypeId::of::<C>())
-            .expect("Component not found");
+            .expect("Component must be available");
 
         let guard =
-            RefCell::try_borrow_mut(generic).expect("Component is already mutably borrowed");
+            RefCell::try_borrow_mut(generic).expect("Component must not be mutably borrowed");
 
         if !guard.mutable {
             panic!("Component is not allowed to be mutated");
@@ -139,9 +137,9 @@ impl<'a, 'c> ComponentSetAccess<'a, 'c> {
 
         FilteredEntitiesIter {
             filtered_archetype_ids,
-            all_archetypes: self.system_access.all_archetypes,
+            all_archetypes: &self.system_access.storage.archetypes,
             curr_arch_id,
-            curr_iter: self.system_access.all_archetypes[curr_arch_id]
+            curr_iter: self.system_access.storage.archetypes[curr_arch_id]
                 .entities
                 .iter(),
         }
@@ -176,42 +174,45 @@ impl<'a> Iterator for FilteredEntitiesIter<'a> {
 
 /// Represents all available components to a system.
 pub struct SystemAccess<'a> {
-    entities: AllEntities<'a>,
-    component_to_archetypes_map: &'a HashMap<TypeId, Vec<usize>>,
-    all_archetypes: &'a [ArchetypeStorage],
-    allowed_all_components: bool,
+    storage: &'a EntityStorage,
+    /// Whether new components can be added to `global_components` from the `storage`.
+    /// Safety: `storage` must be uniquely borrowed.
+    new_components_allowed: bool,
+    /// Maps component `TypeId`s to respective archetypes which contain this component.
     global_components:
-        UnsafeCell<HashMap<TypeId, Pin<Rc<RefCell<GenericComponentGlobalAccess<'a>>>>>>,
+        UnsafeCell<HashMap<TypeId, Pin<Box<RefCell<GenericComponentGlobalAccess<'a>>>>>>,
 }
 
 impl<'a> SystemAccess<'a> {
     fn get_component(
         &self,
         ty: TypeId,
-    ) -> Option<&Pin<Rc<RefCell<GenericComponentGlobalAccess<'a>>>>> {
+    ) -> Option<&Pin<Box<RefCell<GenericComponentGlobalAccess<'a>>>>> {
         let global_components = unsafe { &mut *self.global_components.get() };
 
         match global_components.entry(ty) {
             hash_map::Entry::Occupied(e) => Some(e.into_mut()),
             hash_map::Entry::Vacant(e) => {
-                if !self.allowed_all_components {
+                if !self.new_components_allowed {
                     return None;
                 }
 
                 // Modifying the hashmap is safe because referenced values are wrapped in Pin<Box<>>.
                 let new = RefCell::new(GenericComponentGlobalAccess {
                     filtered_archetype_ids: self
+                        .storage
                         .component_to_archetypes_map
                         .get(&ty)
                         .unwrap_or(&vec![])
                         .clone(),
-                    all_archetypes: self.all_archetypes,
-                    all_entities: self.entities,
-                    // Safety: true is allowed here because there's nothing to modify.
+                    all_archetypes: &self.storage.archetypes,
+                    all_entities: self.storage.entities(),
+                    // Safety: mutability is allowed because `self.new_components_allowed` is true,
+                    // therefore `self.storage` must be uniquely borrowed.
                     mutable: true,
                 });
 
-                Some(e.insert(Rc::pin(new)))
+                Some(e.insert(Box::pin(new)))
             }
         }
     }
@@ -229,7 +230,7 @@ impl<'a> SystemAccess<'a> {
             }
 
             let next_archetype_ids: HashSet<_> =
-                if let Some(archetypes) = self.component_to_archetypes_map.get(comp_ty) {
+                if let Some(archetypes) = self.storage.component_to_archetypes_map.get(comp_ty) {
                     archetypes.iter().map(|v| *v as ArchetypeId).collect()
                 } else {
                     return HashSet::new();
@@ -246,6 +247,11 @@ impl<'a> SystemAccess<'a> {
         result
     }
 
+    /// Returns `ArchetypeId` corresponding to the specified `TypeId`.
+    pub fn type_id_to_archetype_id(&self, type_id: &TypeId) -> Option<ArchetypeId> {
+        self.storage.type_id_to_archetype_id(type_id)
+    }
+
     /// Borrows the component.
     /// Panics if the component is mutably borrowed or not available to this system.
     pub fn component<'b, C: Component>(
@@ -254,10 +260,10 @@ impl<'a> SystemAccess<'a> {
         let ty = TypeId::of::<C>();
 
         // This is safe because the mutable reference gets dropped afterwards.
-        let generic = self.get_component(ty).expect("Component not available");
+        let generic = self.get_component(ty).expect("Component must be available");
 
         GlobalComponentAccess {
-            generic: generic.try_borrow().expect("Component is mutably borrowed"),
+            generic: generic.try_borrow().expect("Component must not be mutably borrowed"),
             _ty: Default::default(),
             _mutability: Default::default(),
         }
@@ -270,11 +276,11 @@ impl<'a> SystemAccess<'a> {
     ) -> GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &'static ()> {
         let ty = TypeId::of::<C>();
 
-        let generic = self.get_component(ty).expect("Component not available");
+        let generic = self.get_component(ty).expect("Component must be available");
 
         let guard = generic
             .try_borrow_mut()
-            .expect("Component is already borrowed");
+            .expect("Component must not be borrowed");
 
         if !guard.mutable {
             panic!("Component is not allowed to be mutated");
@@ -289,7 +295,7 @@ impl<'a> SystemAccess<'a> {
 
     /// Provides access to entities that contain specific components.
     /// Panics if any of specified components are already borrowed or not available to this system.
-    pub fn component_set(&mut self, set: &BCompSet) -> ComponentSetAccess<'a, '_> {
+    pub fn component_set(&self, set: &BCompSet) -> ComponentSetAccess<'a, '_> {
         let filtered_archetype_ids: Vec<usize> = self
             .archetype_set_for(&set)
             .into_iter()
@@ -301,29 +307,35 @@ impl<'a> SystemAccess<'a> {
         let mut _component_mut_guards = Vec::with_capacity(set.components.len());
 
         for (ty, &mutable) in &set.components {
-            let comp = self.get_component(*ty).unwrap();
+            let comp = self
+                .get_component(*ty)
+                .expect("Component must be available");
 
-            if mutable && !RefCell::borrow(comp).mutable {
-                panic!("Component is not allowed to be mutated");
+            if mutable {
+                let borrowed =
+                    RefCell::try_borrow(comp).expect("Component must not be mutably borrowed");
+                if !borrowed.mutable {
+                    panic!("Component is not allowed to be mutated");
+                }
             }
 
             components.insert(
                 *ty,
                 RefCell::new(GenericComponentGlobalAccess {
                     filtered_archetype_ids: filtered_archetype_ids.clone(),
-                    all_archetypes: self.all_archetypes,
-                    all_entities: self.entities,
-                    // Safety: true is allowed here because there's nothing to modify.
+                    all_archetypes: &self.storage.archetypes,
+                    all_entities: self.storage.entities(),
                     mutable,
                 }),
             );
 
             if mutable {
                 _component_mut_guards
-                    .push(RefCell::try_borrow_mut(comp).expect("Component is already borrowed"));
+                    .push(RefCell::try_borrow_mut(comp).expect("Component must not be borrowed"));
             } else {
-                _component_guards
-                    .push(RefCell::try_borrow(comp).expect("Component is mutably borrowed"));
+                _component_guards.push(
+                    RefCell::try_borrow(comp).expect("Component must not be mutably borrowed"),
+                );
             }
         }
 
@@ -526,16 +538,15 @@ impl EntityStorage {
             .map(|(&ty, mutable)| {
                 (
                     ty,
-                    Rc::pin(RefCell::new(self.global_component_by_id(ty, *mutable))),
+                    Box::pin(RefCell::new(self.global_component_by_id(ty, *mutable))),
                 )
             })
             .collect();
 
         SystemAccess {
-            entities: self.entities(),
-            component_to_archetypes_map: &self.component_to_archetypes_map,
-            all_archetypes: &self.archetypes,
-            allowed_all_components: false,
+            storage: self,
+            // `self` is not uniquely borrowed, so restrict access only to specified components.
+            new_components_allowed: false,
             global_components: UnsafeCell::new(global_components),
         }
     }
@@ -543,10 +554,9 @@ impl EntityStorage {
     /// Provides access to all components. Allows simultaneous mutable access to multiple components.
     pub fn access(&mut self) -> SystemAccess {
         SystemAccess {
-            entities: self.entities(),
-            component_to_archetypes_map: &self.component_to_archetypes_map,
-            all_archetypes: &self.archetypes,
-            allowed_all_components: true,
+            storage: self,
+            // Safety: `self` is &mut, therefore this is valid.
+            new_components_allowed: true,
             global_components: UnsafeCell::new(HashMap::with_capacity(
                 self.component_to_archetypes_map.len(),
             )),
