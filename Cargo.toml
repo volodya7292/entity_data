@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "1.8.0"
+version = "1.9.0"
 authors = ["a7292969 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
@@ -14,7 +14,7 @@ license-file = "LICENSE.md"
 members = ["macros"]
 
 [dependencies]
-macros = { package = "entity_data-macros", path = "macros", version = "1.5" }
+macros = { package = "entity_data-macros", path = "macros", version = "1.6" }
 ahash = "0.8"
 bitvec = "1.0"
 memoffset = "0.8"

@@ -177,9 +177,12 @@ pub use archetype::ArchetypeStorage;
 pub use entity::EntityId;
 pub use entity_storage::EntityStorage;
 pub use entry::{Entry, EntryMut};
-pub use macros::{iter_set, Archetype};
+pub use macros::Archetype;
 pub use state::{AnyState, ArchetypeState, StaticArchetype};
-pub use system::component::{GlobalComponentAccess, GlobalComponentIter, GlobalComponentIterMut};
+pub use system::component::{
+    GenericComponentGlobalAccess, GlobalComponentAccess, GlobalComponentIter,
+    GlobalComponentIterMut,
+};
 pub use system::{ComponentSetAccess, System, SystemAccess, SystemHandler};
 
 pub(crate) type HashSet<T> = ahash::AHashSet<T>;

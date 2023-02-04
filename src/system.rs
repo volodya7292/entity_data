@@ -99,7 +99,9 @@ impl<'a, 'c> ComponentSetAccess<'a, 'c> {
             .get(&TypeId::of::<C>())
             .expect("Component must be available");
 
-        let guard = generic.try_borrow().expect("Component must not be mutably borrowed");
+        let guard = generic
+            .try_borrow()
+            .expect("Component must not be mutably borrowed");
 
         GlobalComponentIter {
             inner: unsafe {
@@ -184,10 +186,7 @@ pub struct SystemAccess<'a> {
 }
 
 impl<'a> SystemAccess<'a> {
-    fn get_component(
-        &self,
-        ty: TypeId,
-    ) -> Option<&Pin<Box<RefCell<GenericComponentGlobalAccess<'a>>>>> {
+    fn get_component(&self, ty: TypeId) -> Option<&RefCell<GenericComponentGlobalAccess<'a>>> {
         let global_components = unsafe { &mut *self.global_components.get() };
 
         match global_components.entry(ty) {
@@ -256,16 +255,17 @@ impl<'a> SystemAccess<'a> {
     /// Panics if the component is mutably borrowed or not available to this system.
     pub fn component<'b, C: Component>(
         &'b self,
-    ) -> GlobalComponentAccess<C, Ref<'b, GenericComponentGlobalAccess<'a>>, &()> {
+    ) -> GlobalComponentAccess<C, Ref<'b, GenericComponentGlobalAccess<'a>>> {
         let ty = TypeId::of::<C>();
 
         // This is safe because the mutable reference gets dropped afterwards.
         let generic = self.get_component(ty).expect("Component must be available");
 
         GlobalComponentAccess {
-            generic: generic.try_borrow().expect("Component must not be mutably borrowed"),
+            generic: generic
+                .try_borrow()
+                .expect("Component must not be mutably borrowed"),
             _ty: Default::default(),
-            _mutability: Default::default(),
         }
     }
 
@@ -273,7 +273,7 @@ impl<'a> SystemAccess<'a> {
     /// Panics if the component is already borrowed or not available to this system.
     pub fn component_mut<'b, C: Component>(
         &'b self,
-    ) -> GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &'static ()> {
+    ) -> GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>> {
         let ty = TypeId::of::<C>();
 
         let generic = self.get_component(ty).expect("Component must be available");
@@ -289,7 +289,6 @@ impl<'a> SystemAccess<'a> {
         GlobalComponentAccess {
             generic: guard,
             _ty: Default::default(),
-            _mutability: Default::default(),
         }
     }
 

@@ -1,9 +1,10 @@
+use crate::system::BCompSet;
 use crate::{Archetype, EntityStorage};
 use crate::{StaticArchetype, System, SystemAccess};
 use ahash::HashSet;
 use rand::Rng;
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Comp1 {
     a: u32,
     b: [u32; 4],
@@ -116,12 +117,11 @@ fn general() {
 
     storage.dispatch(&mut [System::new(&mut |access: SystemAccess| {
         let mut c = 0;
+        let set = access.component_set(&BCompSet::new().with::<Comp1>().with_mut::<Comp2>());
 
-        for v in crate::iter_set!(access, Comp1, mut Comp2) {
-            let (_comp1, _comp2): (&Comp1, &mut Comp2) = v;
+        for (_comp1, _comp2) in set.iter::<Comp1>().zip(set.iter_mut::<Comp2>()) {
             c += 1;
         }
-
         assert_eq!(c, 2);
 
         let all_comp1: Vec<_> = access.component::<Comp1>().iter().cloned().collect();

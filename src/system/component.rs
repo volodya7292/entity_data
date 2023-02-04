@@ -172,20 +172,19 @@ impl GenericComponentGlobalAccess<'_> {
     }
 }
 
-pub struct GlobalComponentAccess<C, G, M> {
+pub struct GlobalComponentAccess<C, G> {
     pub(crate) generic: G,
     pub(crate) _ty: PhantomData<C>,
-    pub(crate) _mutability: PhantomData<M>,
 }
 
-impl<'a, C: Component> GlobalComponentAccess<C, Ref<'a, GenericComponentGlobalAccess<'a>>, &()> {
+impl<'a, C: Component> GlobalComponentAccess<C, Ref<'a, GenericComponentGlobalAccess<'a>>> {
     /// Returns `true` if the storage contains the specified entity.
     pub fn contains(&self, entity_id: &EntityId) -> bool {
         self.generic.all_entities.contains(entity_id)
     }
 
     /// Returns a reference to the component `C` of the specified entity id.
-    pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
+    pub fn get(&self, entity_id: &EntityId) -> Option<&C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
     }
 
@@ -207,7 +206,7 @@ impl<'a, C: Component> GlobalComponentAccess<C, Ref<'a, GenericComponentGlobalAc
 }
 
 impl<'a, 'b: 'a, C: Component + 'a> IntoIterator
-    for GlobalComponentAccess<C, Ref<'b, GenericComponentGlobalAccess<'a>>, &()>
+    for GlobalComponentAccess<C, Ref<'b, GenericComponentGlobalAccess<'a>>>
 {
     type Item = &'a C;
     type IntoIter = GlobalComponentIter<'a, 'b, C>;
@@ -218,7 +217,7 @@ impl<'a, 'b: 'a, C: Component + 'a> IntoIterator
 }
 
 impl<'a, 'b, C: Component>
-    GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &()>
+    GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>>
 {
     /// Returns `true` if the storage contains the specified entity.
     pub fn contains(&self, entity_id: &EntityId) -> bool {
@@ -226,12 +225,12 @@ impl<'a, 'b, C: Component>
     }
 
     /// Returns a reference to the component `C` of the specified entity id.
-    pub fn get(&self, entity_id: &EntityId) -> Option<&'a C> {
+    pub fn get(&self, entity_id: &EntityId) -> Option<&C> {
         self.generic.all_archetypes[entity_id.archetype_id as usize].get(entity_id.id)
     }
 
     /// Returns a mutable reference to the component `C` of the specified entity id.
-    pub fn get_mut(&mut self, entity_id: &EntityId) -> Option<&'a mut C> {
+    pub fn get_mut(&mut self, entity_id: &EntityId) -> Option<&mut C> {
         let comp = self.generic.all_archetypes[entity_id.archetype_id as usize].component::<C>()?;
         comp.contains(entity_id.id)
             .then(|| unsafe { comp.get_mut_unsafe(entity_id.id) })
@@ -259,7 +258,7 @@ impl<'a, 'b, C: Component>
 }
 
 impl<'a, 'b, C: Component + 'a> IntoIterator
-    for GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>, &()>
+    for GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>>
 {
     type Item = &'b mut C;
     type IntoIter =
