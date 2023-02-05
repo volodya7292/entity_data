@@ -8,6 +8,11 @@ pub struct Entry<'a> {
 }
 
 impl<'a> Entry<'a> {
+    /// Returns underlying entity.
+    pub fn entity(&self) -> &EntityId {
+        &self.entity
+    }
+
     /// Returns a reference to the component `C` of the specified entity.
     pub fn get<C: Component>(&self) -> Option<&C> {
         let comp = self.arch.component::<C>()?;
@@ -23,6 +28,11 @@ pub struct EntryMut<'a> {
 }
 
 impl EntryMut<'_> {
+    /// Returns underlying entity.
+    pub fn entity(&self) -> &EntityId {
+        &self.entity
+    }
+
     /// Returns a reference to the component `C` of the specified entity.
     pub fn get<C: Component>(&self) -> Option<&C> {
         let comp = self.arch.component::<C>()?;
