@@ -1,7 +1,5 @@
-use crate::system::BCompSet;
+use crate::StaticArchetype;
 use crate::{Archetype, EntityStorage};
-use crate::{StaticArchetype, System, SystemAccess};
-use ahash::HashSet;
 use rand::Rng;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -103,36 +101,6 @@ fn general() {
     assert_eq!(&e01v, v01);
     assert_eq!(&e1v, v1);
     assert_eq!(&e2v, v2);
-
-    {
-        let access = storage.access();
-
-        let all_comp1: Vec<_> = access.component::<Comp1>().iter().cloned().collect();
-        let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
-
-        assert_eq!(all_comp1.len(), 4);
-        assert!(all_comp1_set.contains(&e00v));
-        assert!(all_comp1_set.contains(&e1v));
-    }
-
-    storage.dispatch(&mut [System::new(&mut |access: SystemAccess| {
-        let mut c = 0;
-        let set = access.component_set(&BCompSet::new().with::<Comp1>().with_mut::<Comp2>());
-
-        for (_comp1, _comp2) in set.iter::<Comp1>().zip(set.iter_mut::<Comp2>()) {
-            c += 1;
-        }
-        assert_eq!(c, 2);
-
-        let all_comp1: Vec<_> = access.component::<Comp1>().iter().cloned().collect();
-        let all_comp1_set: HashSet<&Comp1> = all_comp1.iter().collect();
-
-        assert_eq!(all_comp1.len(), 4);
-        assert!(all_comp1_set.contains(&e00v));
-        assert!(all_comp1_set.contains(&e1v));
-    })
-    .with::<Comp1>()
-    .with_mut::<Comp2>()]);
 
     assert_eq!(storage.entry(&e1).unwrap().get::<Comp1>(), Some(&e1v));
 

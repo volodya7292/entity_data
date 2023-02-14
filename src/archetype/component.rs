@@ -63,15 +63,6 @@ impl<'a, C: Component, D: Borrow<UnsafeVec>> ComponentStorage<'a, C, D> {
         &mut *ptr
     }
 
-    /// Returns an iterator over all components. Safety: see [get_mut_unsafe](Self::get_mut_unsafe).
-    pub(crate) unsafe fn into_iter_mut_unsafe(self) -> IterMut<'a, C, Self> {
-        IterMut {
-            entities_iter: self.entities.iter(),
-            data: self,
-            _ty: Default::default(),
-        }
-    }
-
     /// Returns a reference to the component `C` of the specified entity.
     /// Safety: entity must exist.
     pub unsafe fn get_unchecked(&self, entity_id: ArchEntityId) -> &'a C {

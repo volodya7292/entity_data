@@ -63,102 +63,27 @@
 //! fn main() {
 //!     let mut storage = EntityStorage::new();
 //!
-//!     let super_dog = storage.add(Dog {
+//!     let super_dog_entity = storage.add(Dog {
 //!         animal: Animal { weight: 30.0, habitat: "forest".to_string(), },
 //!         barks: Barks { bark_sound: "bark.ogg".to_string(), },
 //!         eats: Eats { favorite_food: "meat".to_string(), eaten_food: vec![] },
 //!     });
 //!
-//!     let hummingbird = storage.add(Bird(
+//!     let hummingbird_entity = storage.add(Bird(
 //!         Animal { weight: 5.0, habitat: "gardens".to_string()},
 //!         Eats { favorite_food: "apples".to_string(), eaten_food: vec![] }
 //!     ));
 //!
-//!     let super_dog_barks = storage.get::<Barks>(&super_dog).unwrap();
+//!     let mut  super_dog = storage.entry_mut(&super_dog_entity).unwrap();
+//!     let super_dog_barks = super_dog.get::<Barks>().unwrap();
 //!     super_dog_barks.bark();
 //!
-//!     let super_dog_eats = storage.get_mut::<Eats>(&super_dog).unwrap();
+//!     let super_dog_eats = super_dog.get_mut::<Eats>().unwrap();
 //!     super_dog_eats.favorite_food = "beans".to_string();
 //!
-//!     let hummingbird_eats = storage.get_mut::<Eats>(&hummingbird).unwrap();
+//!     let hummingbird_eats = storage.get_mut::<Eats>(&hummingbird_entity).unwrap();
 //!     hummingbird_eats.eat("seeds".to_string());
 //! }
-//! ```
-//!
-//! Processing multiple components simultaneously:
-//!
-//! ```
-//! use entity_data::{EntityId, EntityStorage, System, SystemHandler};
-//! use entity_data::system::SystemAccess;
-//! use macros::Archetype;
-//!
-//! #[derive(Default, Debug)]
-//! struct Position {
-//!     x: f32,
-//!     y: f32,
-//! }
-//!
-//! #[derive(Debug)]
-//! struct Name(String);
-//!
-//! #[derive(Archetype)]
-//! struct Dog {
-//!     pos: Position,
-//!     name: Name,
-//! }
-//!
-//! struct PositionsPrintSystem {}
-//!
-//! #[derive(Default)]
-//! struct ConcatAllNamesSystem {
-//!     result: String
-//! }
-//!
-//! impl SystemHandler for PositionsPrintSystem {
-//!     fn run(&mut self, data: SystemAccess) {
-//!         let positions = data.component::<Position>();
-//!         let names = data.component::<Name>();
-//!         for (pos, name) in positions.iter().zip(names) {
-//!             println!("{:?} - {:?}", pos, name);
-//!         }
-//!     }
-//! }
-//!
-//! impl SystemHandler for ConcatAllNamesSystem {
-//!     fn run(&mut self, data: SystemAccess) {
-//!         let names = data.component::<Name>();
-//!         for name in names {
-//!             self.result += &name.0;
-//!         }
-//!     }
-//! }
-//!
-//! fn main() {
-//!     let mut storage = EntityStorage::new();
-//!
-//!     let dog0 = storage.add(Dog {
-//!         pos: Default::default(),
-//!         name: Name("Bobby".to_owned())
-//!     });
-//!     let dog1 = storage.add(Dog {
-//!         pos: Position { x: 3.0, y: 5.0 },
-//!         name: Name("Jet".to_owned())
-//!     });
-//!
-//!     let mut positions_print_system = PositionsPrintSystem {};
-//!     let mut concat_names_system = ConcatAllNamesSystem::default();
-//!
-//!     let mut sys0 = System::new(&mut positions_print_system)
-//!         .with::<Position>().with::<Name>();
-//!     let mut sys1 = System::new(&mut concat_names_system)
-//!         .with::<Name>();
-//!
-//!     // or storage.dispatch_par() to run systems in parallel (requires `rayon` feature to be enabled).
-//!     storage.dispatch(&mut [sys0, sys1]);
-//!
-//!     println!("{}", concat_names_system.result);
-//!}
-//! ```
 
 #[cfg(test)]
 mod tests;
@@ -179,13 +104,9 @@ pub use entity_storage::EntityStorage;
 pub use entry::{Entry, EntryMut};
 pub use macros::Archetype;
 pub use state::{AnyState, ArchetypeState, StaticArchetype};
-pub use system::component::{
-    GenericComponentGlobalAccess, GlobalComponentAccess, GlobalComponentIter,
-    GlobalComponentIterMut,
-};
-pub use system::{ComponentSetAccess, System, SystemAccess, SystemHandler};
+pub use system::component::{GenericComponentGlobalAccess, GlobalComponentAccess};
+pub use system::{System, SystemAccess, SystemHandler};
 
-pub(crate) type HashSet<T> = ahash::AHashSet<T>;
 pub(crate) type HashMap<K, V> = ahash::AHashMap<K, V>;
 
 extern crate self as entity_data;

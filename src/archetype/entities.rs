@@ -54,12 +54,12 @@ impl<'a> ArchetypeEntities {
             .map_or(false, |v| *v)
     }
 
-    /// Returns an iterator over all available entities.
+    /// Returns an iterator over all entities of the archetype.
     pub fn iter(&'a self) -> EntitiesIter {
         EntitiesIter(self.occupied_ids.iter_ones())
     }
 
-    /// Returns the number of available entities.
+    /// Returns the number of entities in the archetype.
     pub fn count(&self) -> usize {
         self.occupied_ids.count_ones() as usize
     }

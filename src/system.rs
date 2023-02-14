@@ -2,15 +2,11 @@ pub(crate) mod component;
 
 use crate::entity::ArchetypeId;
 use crate::system::component::{
-    CompMutability, ComponentGlobalIterInner, ComponentGlobalIterMutInner,
-    GenericComponentGlobalAccess, GlobalComponentAccess, OwningRef,
+    CompMutability, GenericComponentGlobalAccess, GlobalComponentAccess, GlobalComponentAccessMut,
 };
-use crate::{
-    archetype, ArchetypeStorage, Component, EntityId, EntityStorage, GlobalComponentIter,
-    GlobalComponentIterMut, HashMap, HashSet,
-};
+use crate::{Component, EntityStorage, HashMap};
 use std::any::TypeId;
-use std::cell::{Ref, RefCell, RefMut, UnsafeCell};
+use std::cell::{RefCell, UnsafeCell};
 use std::collections::hash_map;
 use std::pin::Pin;
 use std::vec;
@@ -53,127 +49,6 @@ impl<'a> System<'a> {
     }
 }
 
-/// Describes binary component intersection with or without particular components.
-#[derive(Clone, Eq, PartialEq)]
-pub struct BCompSet {
-    components: HashMap<TypeId, CompMutability>,
-}
-
-impl BCompSet {
-    /// Creates a new binary component intersection descriptor.
-    pub fn new() -> Self {
-        Self {
-            components: HashMap::with_capacity(32),
-        }
-    }
-
-    /// Includes component `C` in the set.
-    pub fn with<C: Component>(mut self) -> Self {
-        self.components.insert(TypeId::of::<C>(), false);
-        self
-    }
-
-    /// Includes component `C` in the set.
-    pub fn with_mut<C: Component>(mut self) -> Self {
-        self.components.insert(TypeId::of::<C>(), true);
-        self
-    }
-}
-
-pub struct ComponentSetAccess<'a, 'b> {
-    _component_guards: Vec<Ref<'b, GenericComponentGlobalAccess<'a>>>,
-    _component_mut_guards: Vec<RefMut<'b, GenericComponentGlobalAccess<'a>>>,
-    components: HashMap<TypeId, RefCell<GenericComponentGlobalAccess<'a>>>,
-    filtered_archetype_ids: Vec<usize>,
-    system_access: &'b SystemAccess<'a>,
-}
-
-impl<'a, 'c> ComponentSetAccess<'a, 'c> {
-    pub fn access(&self) -> &SystemAccess<'a> {
-        self.system_access
-    }
-
-    pub fn iter<'b, C: Component>(&'b self) -> GlobalComponentIter<'a, 'b, C> {
-        let generic = self
-            .components
-            .get(&TypeId::of::<C>())
-            .expect("Component must be available");
-
-        let guard = generic
-            .try_borrow()
-            .expect("Component must not be mutably borrowed");
-
-        GlobalComponentIter {
-            inner: unsafe {
-                OwningRef::new(guard, |generic| ComponentGlobalIterInner::new(generic))
-            },
-        }
-    }
-
-    pub fn iter_mut<'b, C: Component>(
-        &'b self,
-    ) -> GlobalComponentIterMut<'a, 'b, 'b, RefMut<'b, GenericComponentGlobalAccess<'a>>, C> {
-        let generic = self
-            .components
-            .get(&TypeId::of::<C>())
-            .expect("Component must be available");
-
-        let guard =
-            RefCell::try_borrow_mut(generic).expect("Component must not be mutably borrowed");
-
-        if !guard.mutable {
-            panic!("Component is not allowed to be mutated");
-        }
-
-        GlobalComponentIterMut {
-            inner: unsafe {
-                OwningRef::new(guard, |generic| ComponentGlobalIterMutInner::new(generic))
-            },
-            _l: Default::default(),
-        }
-    }
-
-    pub fn into_entities_iter(self) -> FilteredEntitiesIter<'a> {
-        let mut filtered_archetype_ids = self.filtered_archetype_ids.into_iter();
-        let curr_arch_id = filtered_archetype_ids.next().unwrap();
-
-        FilteredEntitiesIter {
-            filtered_archetype_ids,
-            all_archetypes: &self.system_access.storage.archetypes,
-            curr_arch_id,
-            curr_iter: self.system_access.storage.archetypes[curr_arch_id]
-                .entities
-                .iter(),
-        }
-    }
-}
-
-pub struct FilteredEntitiesIter<'a> {
-    filtered_archetype_ids: vec::IntoIter<usize>,
-    all_archetypes: &'a [ArchetypeStorage],
-    curr_arch_id: usize,
-    curr_iter: archetype::entities::EntitiesIter<'a>,
-}
-
-impl<'a> Iterator for FilteredEntitiesIter<'a> {
-    type Item = EntityId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let id = self.curr_iter.next();
-
-            if let Some(arch_entity_id) = id {
-                let entity_id = EntityId::new(self.curr_arch_id as ArchetypeId, arch_entity_id);
-                return Some(entity_id);
-            }
-
-            let next_arch_id = self.filtered_archetype_ids.next()?;
-
-            self.curr_iter = self.all_archetypes[next_arch_id].entities.iter();
-        }
-    }
-}
-
 /// Represents all available components to a system.
 pub struct SystemAccess<'a> {
     storage: &'a EntityStorage,
@@ -205,7 +80,6 @@ impl<'a> SystemAccess<'a> {
                         .unwrap_or(&vec![])
                         .clone(),
                     all_archetypes: &self.storage.archetypes,
-                    all_entities: self.storage.entities(),
                     // Safety: mutability is allowed because `self.new_components_allowed` is true,
                     // therefore `self.storage` must be uniquely borrowed.
                     mutable: true,
@@ -216,36 +90,6 @@ impl<'a> SystemAccess<'a> {
         }
     }
 
-    fn archetype_set_for(&self, set: &BCompSet) -> HashSet<ArchetypeId> {
-        let mut result = HashSet::<ArchetypeId>::with_capacity(64);
-        let mut initialized = false;
-
-        // Find archetypes with intersecting components from `set`
-        for (comp_ty, _) in &set.components {
-            let comp = self.get_component(*comp_ty);
-
-            if comp.is_none() {
-                panic!("Component not available")
-            }
-
-            let next_archetype_ids: HashSet<_> =
-                if let Some(archetypes) = self.storage.component_to_archetypes_map.get(comp_ty) {
-                    archetypes.iter().map(|v| *v as ArchetypeId).collect()
-                } else {
-                    return HashSet::new();
-                };
-
-            if initialized {
-                result.retain(|v| next_archetype_ids.contains(v));
-            } else {
-                result = next_archetype_ids;
-                initialized = true;
-            }
-        }
-
-        result
-    }
-
     /// Returns `ArchetypeId` corresponding to the specified `TypeId`.
     pub fn type_id_to_archetype_id(&self, type_id: &TypeId) -> Option<ArchetypeId> {
         self.storage.type_id_to_archetype_id(type_id)
@@ -253,9 +97,7 @@ impl<'a> SystemAccess<'a> {
 
     /// Borrows the component.
     /// Panics if the component is mutably borrowed or not available to this system.
-    pub fn component<'b, C: Component>(
-        &'b self,
-    ) -> GlobalComponentAccess<C, Ref<'b, GenericComponentGlobalAccess<'a>>> {
+    pub fn component<C: Component>(&self) -> GlobalComponentAccess<C> {
         let ty = TypeId::of::<C>();
 
         // This is safe because the mutable reference gets dropped afterwards.
@@ -271,12 +113,10 @@ impl<'a> SystemAccess<'a> {
 
     /// Mutably borrows the component.
     /// Panics if the component is already borrowed or not available to this system.
-    pub fn component_mut<'b, C: Component>(
-        &'b self,
-    ) -> GlobalComponentAccess<C, RefMut<'b, GenericComponentGlobalAccess<'a>>> {
-        let ty = TypeId::of::<C>();
-
-        let generic = self.get_component(ty).expect("Component must be available");
+    pub fn component_mut<'b, C: Component>(&'b self) -> GlobalComponentAccessMut<'a, 'b, C> {
+        let generic = self
+            .get_component(TypeId::of::<C>())
+            .expect("Component must be available");
 
         let guard = generic
             .try_borrow_mut()
@@ -286,64 +126,9 @@ impl<'a> SystemAccess<'a> {
             panic!("Component is not allowed to be mutated");
         }
 
-        GlobalComponentAccess {
+        GlobalComponentAccessMut {
             generic: guard,
             _ty: Default::default(),
-        }
-    }
-
-    /// Provides access to entities that contain specific components.
-    /// Panics if any of specified components are already borrowed or not available to this system.
-    pub fn component_set(&self, set: &BCompSet) -> ComponentSetAccess<'a, '_> {
-        let filtered_archetype_ids: Vec<usize> = self
-            .archetype_set_for(&set)
-            .into_iter()
-            .map(|v| v as usize)
-            .collect();
-
-        let mut components = HashMap::with_capacity(set.components.len());
-        let mut _component_guards = Vec::with_capacity(set.components.len());
-        let mut _component_mut_guards = Vec::with_capacity(set.components.len());
-
-        for (ty, &mutable) in &set.components {
-            let comp = self
-                .get_component(*ty)
-                .expect("Component must be available");
-
-            if mutable {
-                let borrowed =
-                    RefCell::try_borrow(comp).expect("Component must not be mutably borrowed");
-                if !borrowed.mutable {
-                    panic!("Component is not allowed to be mutated");
-                }
-            }
-
-            components.insert(
-                *ty,
-                RefCell::new(GenericComponentGlobalAccess {
-                    filtered_archetype_ids: filtered_archetype_ids.clone(),
-                    all_archetypes: &self.storage.archetypes,
-                    all_entities: self.storage.entities(),
-                    mutable,
-                }),
-            );
-
-            if mutable {
-                _component_mut_guards
-                    .push(RefCell::try_borrow_mut(comp).expect("Component must not be borrowed"));
-            } else {
-                _component_guards.push(
-                    RefCell::try_borrow(comp).expect("Component must not be mutably borrowed"),
-                );
-            }
-        }
-
-        ComponentSetAccess {
-            _component_guards,
-            _component_mut_guards,
-            components,
-            filtered_archetype_ids,
-            system_access: self,
         }
     }
 }
@@ -525,7 +310,6 @@ impl EntityStorage {
         GenericComponentGlobalAccess {
             filtered_archetype_ids,
             all_archetypes: &self.archetypes,
-            all_entities: self.entities(),
             mutable,
         }
     }
@@ -586,18 +370,22 @@ impl EntityStorage {
     /// let dog0 = storage.add(Dog { pos: Default::default() });
     /// let dog1 = storage.add(Dog { pos: Position { x: 3.0, y: 5.0 } });
     ///
-    /// struct PositionsPrintSystem {}
+    /// struct PositionsPrintSystem {
+    ///     to_process: Vec<EntityId>,
+    /// }
     ///
     /// impl SystemHandler for PositionsPrintSystem {
     ///     fn run(&mut self, data: SystemAccess) {
     ///         let positions = data.component::<Position>();
-    ///         for pos in positions {
-    ///             println!("{:?}", pos);
+    ///         for entity in &self.to_process {
+    ///             println!("{:?}", positions.get(entity));
     ///         }
     ///     }
     /// }
     ///
-    /// let mut sys = PositionsPrintSystem {};
+    /// let mut sys = PositionsPrintSystem {
+    ///     to_process: vec![dog0, dog1]
+    /// };
     /// storage.dispatch(&mut [System::new(&mut sys).with::<Position>()]);
     /// ```
     pub fn dispatch<'a>(&self, mut systems: impl AsMut<[System<'a>]>) {
@@ -720,6 +508,8 @@ fn test_optimization() {
 
 #[test]
 fn test_system_data_access() {
+    use crate::EntityId;
+
     #[derive(Clone, crate::Archetype)]
     struct Arch {
         comp: i16,
