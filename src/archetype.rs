@@ -172,6 +172,11 @@ impl ArchetypeStorage {
         was_present
     }
 
+    /// Returns iterator of archetype constituent components.
+    pub fn iter_component_types(&self) -> impl Iterator<Item = &TypeId> {
+        self.components_by_types.keys()
+    }
+
     /// Returns the number of entities in the archetype.
     pub fn count_entities(&self) -> usize {
         self.entities.count()
