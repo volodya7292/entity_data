@@ -1,12 +1,12 @@
 [package]
 name = "entity_data"
-version = "1.10.2"
-authors = ["a7292969 <a7292969@gmail.com>"]
+version = "1.10.3"
+authors = ["volodya7292 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
 categories = ["data-structures", "rust-patterns"]
 description = "A container for entity component data."
-repository = "https://github.com/a7292969/entity_data"
+repository = "https://github.com/volodya7292/entity_data"
 readme = "README.md"
 license-file = "LICENSE.md"
 

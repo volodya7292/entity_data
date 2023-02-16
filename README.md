@@ -2,9 +2,9 @@
 
 [![Build Status][build_img]][build_lnk] [![Crates.io][crates_img]][crates_lnk] [![Docs.rs][doc_img]][doc_lnk]
 
-[build_img]: https://github.com/a7292969/entity_data/actions/workflows/build.yml/badge.svg
+[build_img]: https://github.com/volodya7292/entity_data/actions/workflows/build.yml/badge.svg
 
-[build_lnk]: https://github.com/a7292969/entity_data/actions
+[build_lnk]: https://github.com/volodya7292/entity_data/actions
 
 [crates_img]: https://img.shields.io/crates/v/entity_data.svg
 
