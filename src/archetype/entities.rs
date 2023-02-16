@@ -17,26 +17,21 @@ impl<'a> ArchetypeEntities {
     pub const MAX_ENTITIES: usize = const_min(Self::MAX_SLOTS, Self::MAX_BITVEC_BITS);
 
     pub(crate) fn allocate_slot(&mut self) -> ArchEntityId {
-        #[cold]
-        #[inline(never)]
-        fn assert_failed() -> ! {
-            panic!(
-                "Out of slots. A maximum number of entities ({}) is reached.",
-                ArchetypeEntities::MAX_ENTITIES
-            );
-        }
-
         let free_slot = self.occupied_ids.iter_zeros().next();
 
         if let Some(free_slot) = free_slot {
             self.occupied_ids.set(free_slot, true);
-            free_slot as ArchEntityId
-        } else if self.occupied_ids.len() < Self::MAX_ENTITIES {
-            self.occupied_ids.push(true);
-            (self.occupied_ids.len() - 1) as ArchEntityId
-        } else {
-            assert_failed();
+            return free_slot as ArchEntityId;
         }
+        if self.occupied_ids.len() < Self::MAX_ENTITIES {
+            self.occupied_ids.push(true);
+            return (self.occupied_ids.len() - 1) as ArchEntityId;
+        }
+
+        panic!(
+            "Out of slots. A maximum number of entities ({}) is reached.",
+            ArchetypeEntities::MAX_ENTITIES
+        );
     }
 
     /// Returns `true` if the entity was present.
