@@ -1,6 +1,6 @@
 [package]
 name = "entity_data-macros"
-version = "1.6.1"
+version = "1.6.2"
 edition = "2021"
 authors = ["volodya7292 <a7292969@gmail.com>"]
 description = "Macros for entity_data crate."
