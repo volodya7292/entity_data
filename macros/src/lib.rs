@@ -116,6 +116,10 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 <Self as #main_crate::StaticArchetype>::metadata()
             }
 
+            fn num_components(&self) -> usize {
+                #fields_len
+            }
+
             fn as_any(&self) -> &dyn ::std::any::Any {
                 self
             }

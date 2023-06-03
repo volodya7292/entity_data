@@ -12,6 +12,7 @@ pub trait ArchetypeState: Send + Sync + 'static {
     fn metadata(&self) -> fn() -> ArchetypeMetadata;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+    fn num_components(&self) -> usize;
 
     fn component_ids(&self) -> SmallVec<[TypeId; 32]> {
         let meta = (self.metadata())();
@@ -95,5 +96,9 @@ impl ArchetypeState for AnyState {
 
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self.0.as_any_mut()
+    }
+
+    fn num_components(&self) -> usize {
+        self.0.num_components()
     }
 }
