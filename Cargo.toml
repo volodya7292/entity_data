@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "1.10.3"
+version = "1.10.4"
 authors = ["volodya7292 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
@@ -16,10 +16,10 @@ members = ["macros"]
 [dependencies]
 macros = { package = "entity_data-macros", path = "macros", version = "1.6" }
 ahash = "0.8"
-bitvec = "1.0"
-memoffset = "0.8"
+index-pool = "1.0"
+memoffset = "0.9"
 smallvec = { version = "1.10", features = ["const_generics"] }
-rayon = { version = "1.6", optional = true }
+rayon = { version = "1.7", optional = true }
 
 [dev-dependencies]
 rand = "0.8"

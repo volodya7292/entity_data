@@ -197,7 +197,7 @@ impl AllEntities<'_> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub struct AllEntitiesIter<'a> {
     remaining_entities: usize,
     archetypes: &'a [ArchetypeStorage],
@@ -210,7 +210,7 @@ impl Iterator for AllEntitiesIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(arch_entity_id) = self.curr_iter.map(|mut v| v.next()).flatten() {
+            if let Some(arch_entity_id) = self.curr_iter.as_mut().map(|v| v.next()).flatten() {
                 self.remaining_entities -= 1;
                 return Some(EntityId::new(self.next_arch_id, arch_entity_id));
             } else {
