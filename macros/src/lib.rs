@@ -89,8 +89,8 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
         impl #generics #main_crate::StaticArchetype for #ident #generics #where_clause {
             const N_COMPONENTS: usize = #fields_len;
 
-            fn metadata() -> fn() -> #main_crate::private::ArchetypeMetadata {
-                || #main_crate::private::ArchetypeMetadata {
+            fn metadata() -> #main_crate::private::ArchetypeMetadata {
+                #main_crate::private::ArchetypeMetadata {
                     component_type_ids: || #main_crate::private::smallvec![#field_types],
                     component_infos: || #main_crate::private::smallvec![#fields],
                     needs_drop: ::std::mem::needs_drop::<Self>(),
@@ -112,7 +112,7 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
                 ::std::mem::forget(self);
             }
 
-            fn metadata(&self) -> fn() -> #main_crate::private::ArchetypeMetadata {
+            fn metadata(&self) -> #main_crate::private::ArchetypeMetadata {
                 <Self as #main_crate::StaticArchetype>::metadata()
             }
 

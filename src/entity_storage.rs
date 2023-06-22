@@ -31,7 +31,7 @@ impl EntityStorage {
     fn get_or_create_archetype<S: ArchetypeState>(&mut self, state: &S) -> usize {
         match self.archetypes_by_types.entry(state.ty()) {
             hash_map::Entry::Vacant(e) => {
-                let meta = state.metadata()();
+                let meta = state.metadata();
                 let layout = ArchetypeLayout::new((meta.component_type_ids)().into_vec());
 
                 let arch_id = match self.archetypes_by_layout.entry(layout) {

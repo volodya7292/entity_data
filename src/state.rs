@@ -9,13 +9,13 @@ pub trait ArchetypeState: Send + Sync + 'static {
     fn ty(&self) -> TypeId;
     fn as_ptr(&self) -> *const u8;
     fn forget(self);
-    fn metadata(&self) -> fn() -> ArchetypeMetadata;
+    fn metadata(&self) -> ArchetypeMetadata;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn num_components(&self) -> usize;
 
     fn component_ids(&self) -> SmallVec<[TypeId; 32]> {
-        let meta = (self.metadata())();
+        let meta = self.metadata();
         (meta.component_type_ids)()
     }
 }
@@ -24,7 +24,7 @@ pub trait ArchetypeState: Send + Sync + 'static {
 pub trait StaticArchetype: Sized + ArchetypeState {
     const N_COMPONENTS: usize;
 
-    fn metadata() -> fn() -> ArchetypeMetadata;
+    fn metadata() -> ArchetypeMetadata;
 
     fn into_any(self) -> AnyState {
         AnyState(Box::new(self))
@@ -86,7 +86,7 @@ impl ArchetypeState for AnyState {
         }
     }
 
-    fn metadata(&self) -> fn() -> ArchetypeMetadata {
+    fn metadata(&self) -> ArchetypeMetadata {
         self.0.metadata()
     }
 
