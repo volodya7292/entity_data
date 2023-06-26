@@ -1,6 +1,6 @@
 [package]
 name = "entity_data-macros"
-version = "1.6.3"
+version = "1.7.0"
 edition = "2021"
 authors = ["volodya7292 <a7292969@gmail.com>"]
 description = "Macros for entity_data crate."
@@ -11,6 +11,6 @@ license-file = "../LICENSE.md"
 proc-macro = true
 
 [dependencies]
-syn = "1.0"
+syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"

@@ -56,8 +56,6 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
                         let size = ::std::mem::size_of::<#field_ty>();
                         offset..(offset + size)
                     },
-                    needs_drop: ::std::mem::needs_drop::<#field_ty>(),
-                    drop_func: |p: *mut u8| unsafe { ::std::ptr::drop_in_place(p as *mut #field_ty) }
                 },
             }
         })
@@ -91,10 +89,12 @@ pub fn derive_archetype_fn(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
             fn metadata() -> #main_crate::private::ArchetypeMetadata {
                 #main_crate::private::ArchetypeMetadata {
+                    type_id: ::std::any::TypeId::of::<Self>(),
                     component_type_ids: || #main_crate::private::smallvec![#field_types],
                     component_infos: || #main_crate::private::smallvec![#fields],
+                    size: ::std::mem::size_of::<Self>(),
                     needs_drop: ::std::mem::needs_drop::<Self>(),
-                    drop_func: |p: *mut u8| unsafe { ::std::ptr::drop_in_place(p as *mut Self) },
+                    drop_fn: |p: *mut u8| unsafe { ::std::ptr::drop_in_place(p as *mut Self) },
                 }
             }
         }

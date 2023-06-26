@@ -1,6 +1,6 @@
-use crate::StaticArchetype;
-use crate::{Archetype, EntityStorage};
-use rand::Rng;
+use crate::{Archetype, EntityStorage, StaticArchetype};
+use rand::prelude::StdRng;
+use rand::{Rng, SeedableRng};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct Comp1 {
@@ -10,7 +10,7 @@ struct Comp1 {
 
 impl Comp1 {
     fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(0);
         Comp1 {
             a: rng.gen(),
             b: [rng.gen(), rng.gen(), rng.gen(), rng.gen()],
@@ -27,7 +27,7 @@ struct Comp2 {
 
 impl Comp2 {
     fn new() -> Self {
-        let mut rng = rand::thread_rng();
+        let mut rng = StdRng::seed_from_u64(0);
 
         let a: Vec<Comp1> = (0..rng.gen_range(0..100)).map(|_| Comp1::new()).collect();
         let b: Vec<usize> = (0..123).map(|_| rng.gen()).collect();
@@ -91,6 +91,7 @@ fn general() {
     let e2 = storage.add(Archetype2(e2v.clone()).into_any());
 
     assert_eq!(storage.count_entities(), 6);
+    assert_eq!(storage.entities().iter().count(), storage.count_entities());
 
     let v00 = storage.get::<Comp1>(&e0).unwrap();
     let v01 = storage.get::<Comp2>(&e0).unwrap();

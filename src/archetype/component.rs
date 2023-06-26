@@ -1,5 +1,6 @@
 use crate::archetype::entities::{ArchetypeEntities, EntitiesIter};
 use crate::entity::ArchEntityId;
+use crate::private::ComponentInfo;
 use std::borrow::Borrow;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
@@ -28,6 +29,8 @@ impl<T> Component for T where T: Send + Sync + 'static {}
 
 pub struct ComponentStorage<'a, C, D> {
     pub(crate) entities: &'a ArchetypeEntities,
+    pub(crate) step: usize,
+    pub(crate) info: &'a ComponentInfo,
     pub(crate) data: D,
     pub(crate) _ty: PhantomData<C>,
 }
@@ -39,6 +42,8 @@ impl<'a, C, D: Borrow<UnsafeVec> + Copy> Clone for ComponentStorage<'a, C, D> {
     fn clone(&self) -> Self {
         Self {
             entities: &self.entities,
+            step: self.step,
+            info: self.info,
             data: self.data,
             _ty: Default::default(),
         }
@@ -59,8 +64,10 @@ impl<'a, C: Component, D: Borrow<UnsafeVec>> ComponentStorage<'a, C, D> {
     /// * Entity at `entity_id` must exist.
     /// * `&mut C` must always be unique.
     pub(crate) unsafe fn get_mut_unsafe(&self, entity_id: ArchEntityId) -> &'a mut C {
-        let ptr = ((&*self.data.borrow().get()).as_ptr() as *mut C).offset(entity_id as isize);
-        &mut *ptr
+        let ptr = ((&*self.data.borrow().get()).as_ptr())
+            .add(self.step * entity_id as usize)
+            .add(self.info.range.start);
+        &mut *(ptr as *mut C)
     }
 
     /// Returns a reference to the component `C` of the specified entity.
@@ -135,6 +142,8 @@ impl<'a, C: Component + 'a> IntoIterator for ComponentStorageMut<'a, C> {
             entities_iter: self.entities.iter(),
             data: ComponentStorageRef {
                 entities: self.entities,
+                step: self.step,
+                info: self.info,
                 data: self.data,
                 _ty: Default::default(),
             },

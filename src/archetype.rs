@@ -3,13 +3,13 @@ pub mod entities;
 
 use crate::archetype::component::{ComponentStorageMut, ComponentStorageRef, UnsafeVec};
 use crate::entity::ArchEntityId;
-use crate::private::ComponentInfo;
-use crate::{ArchetypeState, HashMap};
+use crate::private::{ArchetypeMetadata, ComponentInfo};
+use crate::{ArchetypeState, HashMap, StaticArchetype};
 use component::Component;
 use entities::ArchetypeEntities;
 use std::any::TypeId;
 use std::hash::{Hash, Hasher};
-use std::{ptr, slice};
+use std::slice;
 
 #[derive(Clone, Eq)]
 pub(crate) struct ArchetypeLayout {
@@ -47,32 +47,28 @@ impl Hash for ArchetypeLayout {
 /// A collection of entities with unique combination of components.
 /// An archetype can hold a maximum of 2^32-1 entities.
 pub struct ArchetypeStorage {
-    pub(crate) components: Vec<(ComponentInfo, UnsafeVec)>,
+    pub(crate) meta: ArchetypeMetadata,
+    pub(crate) data: UnsafeVec,
+    pub(crate) components: Vec<ComponentInfo>,
     pub(crate) components_by_types: HashMap<TypeId, usize>,
     pub(crate) entities: ArchetypeEntities,
-    pub(crate) components_need_drops: bool,
 }
 
 impl ArchetypeStorage {
-    pub(crate) fn new(comp_infos: &[ComponentInfo]) -> Self {
-        let components: Vec<_> = comp_infos
-            .iter()
-            .map(|info| (info.clone(), Default::default()))
-            .collect();
-
-        let components_by_types: HashMap<_, _> = comp_infos
+    pub(crate) fn new(meta: ArchetypeMetadata) -> Self {
+        let component_infos = meta.component_infos();
+        let components_by_types: HashMap<_, _> = component_infos
             .iter()
             .enumerate()
             .map(|(i, info)| (info.type_id, i))
             .collect();
 
-        let components_need_drops = comp_infos.iter().any(|info| info.needs_drop);
-
         ArchetypeStorage {
-            components,
+            meta,
+            data: Default::default(),
+            components: component_infos.to_vec(),
             components_by_types,
             entities: Default::default(),
-            components_need_drops,
         }
     }
 
@@ -84,19 +80,17 @@ impl ArchetypeStorage {
     pub(crate) unsafe fn add_entity_raw(&mut self, state_ptr: *const u8) -> u32 {
         let entity_id = self.allocate_slot();
 
-        for (info, storage) in &mut self.components {
-            let component_data = state_ptr.add(info.range.start);
-            let comp_size = info.range.len();
+        let data = self.data.get_mut();
+        let offset = entity_id as usize * self.meta.size;
 
-            let dst_idx = entity_id as usize * comp_size;
-
-            if dst_idx == storage.get_mut().len() {
-                let slice = slice::from_raw_parts(component_data, comp_size);
-                storage.get_mut().extend(slice);
-            } else {
-                let dst_ptr = storage.get_mut().as_mut_ptr().add(dst_idx);
-                ptr::copy_nonoverlapping(component_data, dst_ptr, comp_size);
-            }
+        if offset == data.len() {
+            let slice = slice::from_raw_parts(state_ptr, self.meta.size);
+            data.extend(slice);
+        } else if offset < data.len() {
+            let dst_ptr = data.as_mut_ptr().add(offset);
+            dst_ptr.copy_from_nonoverlapping(state_ptr, self.meta.size);
+        } else {
+            unreachable!()
         }
 
         entity_id
@@ -120,11 +114,13 @@ impl ArchetypeStorage {
     #[inline]
     pub fn component<C: Component>(&self) -> Option<ComponentStorageRef<C>> {
         let id = *self.components_by_types.get(&TypeId::of::<C>())?;
-        let (_, data) = self.components.get(id)?;
+        let info = self.components.get(id)?;
 
         Some(ComponentStorageRef {
             entities: &self.entities,
-            data,
+            step: self.meta.size,
+            info,
+            data: &self.data,
             _ty: Default::default(),
         })
     }
@@ -132,11 +128,13 @@ impl ArchetypeStorage {
     #[inline]
     pub fn component_mut<C: Component>(&mut self) -> Option<ComponentStorageMut<C>> {
         let id = *self.components_by_types.get(&TypeId::of::<C>())?;
-        let (_, data) = self.components.get_mut(id)?;
+        let info = self.components.get_mut(id)?;
 
         Some(ComponentStorageMut {
             entities: &self.entities,
-            data,
+            step: self.meta.size,
+            info,
+            data: &mut self.data,
             _ty: Default::default(),
         })
     }
@@ -153,19 +151,51 @@ impl ArchetypeStorage {
         component.get_mut(entity_id)
     }
 
+    /// Returns a reference to the state at `entity_id`.
+    /// Panics if `TypeId` of `S` != `self.ty()`.
+    pub fn get_state<S: StaticArchetype>(&self, entity_id: ArchEntityId) -> Option<&S> {
+        if self.meta.type_id != TypeId::of::<S>() {
+            panic!("invalid type");
+        }
+        if !self.entities.contains(entity_id) {
+            return None;
+        }
+        unsafe {
+            let obj = self.get_ptr(entity_id);
+            Some(&*(obj as *const S))
+        }
+    }
+
+    /// Returns a mutable reference to the state at `entity_id`.
+    /// Panics if `TypeId` of `S` != `self.ty()`.
+    pub fn get_state_mut<S: StaticArchetype>(&mut self, entity_id: ArchEntityId) -> Option<&mut S> {
+        if self.meta.type_id != TypeId::of::<S>() {
+            panic!("invalid type");
+        }
+        if !self.entities.contains(entity_id) {
+            return None;
+        }
+        unsafe {
+            let obj = self.get_ptr(entity_id);
+            Some(&mut *(obj as *mut S))
+        }
+    }
+
+    /// Returns a pointer to the entity object. `entity_id` must be valid.
+    unsafe fn get_ptr(&self, entity_id: ArchEntityId) -> *mut u8 {
+        let data = unsafe { &mut *self.data.get() };
+        let offset = self.meta.size * entity_id as usize;
+        unsafe { data.as_mut_ptr().add(offset) }
+    }
+
     /// Removes an entity from the archetype. Returns `true` if the entity was present in the archetype.
     pub(crate) fn remove(&mut self, entity_id: ArchEntityId) -> bool {
         let was_present = self.entities.free(entity_id);
 
-        if was_present && self.components_need_drops {
-            let id = entity_id as usize;
-            for (type_info, data) in &mut self.components {
-                if type_info.needs_drop {
-                    unsafe {
-                        let ptr = data.get_mut().as_mut_ptr().add(id * type_info.range.len());
-                        (type_info.drop_func)(ptr);
-                    }
-                }
+        if was_present && self.meta.needs_drop {
+            unsafe {
+                let ptr = self.get_ptr(entity_id);
+                (self.meta.drop_fn)(ptr);
             }
         }
 
@@ -173,32 +203,30 @@ impl ArchetypeStorage {
     }
 
     /// Returns iterator of archetype constituent components.
-    pub fn iter_component_types(&self) -> impl Iterator<Item = &TypeId> {
-        self.components_by_types.keys()
+    pub fn iter_component_infos(&self) -> impl Iterator<Item = &ComponentInfo> {
+        self.components.iter()
     }
 
     /// Returns the number of entities in the archetype.
     pub fn count_entities(&self) -> usize {
         self.entities.count()
     }
+
+    /// Returns the `TypeId` of a single state in this archetype.
+    pub fn ty(&self) -> &TypeId {
+        &self.meta.type_id
+    }
 }
 
 impl Drop for ArchetypeStorage {
     fn drop(&mut self) {
-        if !self.components_need_drops {
+        if !self.meta.needs_drop {
             return;
         }
-        for (type_info, data) in &mut self.components {
-            if !type_info.needs_drop {
-                continue;
-            }
-            for id in self.entities.iter() {
-                let ptr = unsafe {
-                    data.get_mut()
-                        .as_mut_ptr()
-                        .add(id as usize * type_info.range.len())
-                };
-                (type_info.drop_func)(ptr);
+        for entity_id in self.entities.iter() {
+            unsafe {
+                let ptr = self.get_ptr(entity_id);
+                (self.meta.drop_fn)(ptr);
             }
         }
     }

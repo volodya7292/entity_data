@@ -37,10 +37,10 @@ impl EntityStorage {
                 let arch_id = match self.archetypes_by_layout.entry(layout) {
                     hash_map::Entry::Vacant(e) => {
                         let new_arch_id = self.archetypes.len();
-                        let archetype = ArchetypeStorage::new(&(meta.component_infos)());
+                        let archetype = ArchetypeStorage::new(meta);
 
                         // Map components to the new archetype
-                        for (info, _) in &archetype.components {
+                        for info in &archetype.components {
                             self.component_to_archetypes_map
                                 .entry(info.type_id)
                                 .or_insert(Default::default())
@@ -99,7 +99,7 @@ impl EntityStorage {
     }
 
     /// Returns a reference to the specified archetype.
-    pub fn get_archetype_by_id(&mut self, id: ArchetypeId) -> Option<&ArchetypeStorage> {
+    pub fn get_archetype_by_id(&self, id: ArchetypeId) -> Option<&ArchetypeStorage> {
         self.archetypes.get(id as usize)
     }
 
@@ -123,6 +123,20 @@ impl EntityStorage {
     pub fn get_mut<C: Component>(&mut self, entity: &EntityId) -> Option<&mut C> {
         let arch = self.archetypes.get_mut(entity.archetype_id as usize)?;
         arch.get_mut(entity.id)
+    }
+
+    /// Returns a reference to the state at `entity_id`.
+    /// Panics if `TypeId` of `S` is not equal to the type of the underlying archetype.
+    pub fn get_state<S: StaticArchetype>(&self, entity_id: &EntityId) -> Option<&S> {
+        let arch = self.archetypes.get(entity_id.archetype_id as usize)?;
+        arch.get_state(entity_id.id)
+    }
+
+    /// Returns a mutable reference to the state at `entity_id`.
+    /// Panics if `TypeId` of `S` is not equal to the type of the underlying archetype.
+    pub fn get_state_mut<S: StaticArchetype>(&mut self, entity_id: &EntityId) -> Option<&mut S> {
+        let arch = self.archetypes.get_mut(entity_id.archetype_id as usize)?;
+        arch.get_state_mut(entity_id.id)
     }
 
     /// Returns an entry of `entity` in the corresponding archetype.
@@ -191,8 +205,8 @@ impl AllEntities<'_> {
         AllEntitiesIter {
             remaining_entities: self.count(),
             archetypes: &self.archetypes,
-            next_arch_id: 0,
-            curr_iter: None,
+            curr_arch_id: 0,
+            curr_iter: self.archetypes.get(0).map(|arch| arch.entities.iter()),
         }
     }
 }
@@ -201,7 +215,7 @@ impl AllEntities<'_> {
 pub struct AllEntitiesIter<'a> {
     remaining_entities: usize,
     archetypes: &'a [ArchetypeStorage],
-    next_arch_id: ArchetypeId,
+    curr_arch_id: ArchetypeId,
     curr_iter: Option<EntitiesIter<'a>>,
 }
 
@@ -212,9 +226,10 @@ impl Iterator for AllEntitiesIter<'_> {
         loop {
             if let Some(arch_entity_id) = self.curr_iter.as_mut().map(|v| v.next()).flatten() {
                 self.remaining_entities -= 1;
-                return Some(EntityId::new(self.next_arch_id, arch_entity_id));
+                return Some(EntityId::new(self.curr_arch_id, arch_entity_id));
             } else {
-                let arch = self.archetypes.get(self.next_arch_id as usize)?;
+                self.curr_arch_id += 1;
+                let arch = self.archetypes.get(self.curr_arch_id as usize)?;
                 self.curr_iter = Some(arch.entities.iter());
             }
         }
