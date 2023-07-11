@@ -102,3 +102,53 @@ impl ArchetypeState for AnyState {
         self.0.num_components()
     }
 }
+
+impl ArchetypeState for () {
+    fn ty(&self) -> TypeId {
+        TypeId::of::<()>()
+    }
+
+    fn as_ptr(&self) -> *const u8 {
+        self as *const _ as *const u8
+    }
+
+    fn forget(self) {}
+
+    fn metadata(&self) -> ArchetypeMetadata {
+        ArchetypeMetadata {
+            type_id: TypeId::of::<Self>(),
+            component_type_ids: || Default::default(),
+            component_infos: || Default::default(),
+            size: 0,
+            needs_drop: false,
+            drop_fn: |_| {},
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn num_components(&self) -> usize {
+        0
+    }
+}
+
+impl StaticArchetype for () {
+    const N_COMPONENTS: usize = 0;
+
+    fn metadata() -> ArchetypeMetadata {
+        ArchetypeMetadata {
+            type_id: TypeId::of::<Self>(),
+            component_type_ids: || Default::default(),
+            component_infos: || Default::default(),
+            size: 0,
+            needs_drop: false,
+            drop_fn: |_| {},
+        }
+    }
+}

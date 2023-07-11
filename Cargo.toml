@@ -1,6 +1,6 @@
 [package]
 name = "entity_data"
-version = "1.11.0"
+version = "1.11.1"
 authors = ["volodya7292 <a7292969@gmail.com>"]
 edition = "2021"
 keywords = ["data", "interfaces", "dynamic-dispatch", "ecs"]
